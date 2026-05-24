@@ -2,10 +2,11 @@ name: mercantis_core_ui
 description: Metadata-driven Flutter UI shell for the Mercantis ecosystem.
 version: 0.1.0
 repository: https://github.com/KevinBusuttil/mercantis.core.flutter
+resolution: workspace
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: '>=3.22.0'
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.0'
 
 dependencies:
   flutter:

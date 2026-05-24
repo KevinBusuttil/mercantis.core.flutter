@@ -3,7 +3,9 @@ description: Mercantis Core Flutter monorepo root.
 publish_to: none
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
 
-# Root pubspec required by Melos to anchor the workspace.
-# Packages live under packages/ and app/.
+workspace:
+  - packages/mercantis_core
+  - packages/mercantis_core_ui
+  - app

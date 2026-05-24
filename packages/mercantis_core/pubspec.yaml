@@ -2,9 +2,10 @@ name: mercantis_core
 description: Offline-first, metadata-driven engine for the Mercantis ecosystem. Pure Dart.
 version: 0.1.0
 repository: https://github.com/KevinBusuttil/mercantis.core.flutter
+resolution: workspace
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
 
 dependencies:
   sqflite_common: ^2.5.4
