@@ -5,10 +5,6 @@ packages:
   - packages/*
   - app
 
-command:
-  bootstrap:
-    usePubspecOverrides: true
-
 scripts:
   test:
     run: melos exec -- dart test
