@@ -1,0 +1,21 @@
+name: mercantis_core_mono
+repository: https://github.com/KevinBusuttil/mercantis.core.flutter
+
+packages:
+  - packages/*
+  - app
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  test:
+    run: melos exec -- dart test
+    description: Run all tests
+  analyze:
+    run: melos exec -- dart analyze
+    description: Analyze all packages
+  format:
+    run: melos exec -- dart format .
+    description: Format all packages
