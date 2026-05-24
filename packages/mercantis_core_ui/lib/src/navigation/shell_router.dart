@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'navigation_shell.dart';
@@ -43,7 +44,7 @@ final shellRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/settings',
-            builder: (context, state) => const _SettingsPlaceholder(),
+            builder: (context, state) => const _SettingsView(),
           ),
         ],
       ),
@@ -51,8 +52,8 @@ final shellRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _SettingsPlaceholder extends StatelessWidget {
-  const _SettingsPlaceholder();
+class _SettingsView extends StatelessWidget {
+  const _SettingsView();
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +63,3 @@ class _SettingsPlaceholder extends StatelessWidget {
     );
   }
 }
-
-// ignore: avoid_classes_with_only_static_members, prefer_typing_uninitialized_variables
-import 'package:flutter/material.dart';
