@@ -36,7 +36,7 @@ class DocTypeListView extends ConsumerWidget {
   Widget _build(BuildContext context, List<DocType> types) {
     final byModule = <String, List<DocType>>{};
     for (final dt in types) {
-      (byModule[dt.module] ??= []).add(dt);
+      (byModule[dt.module ?? 'Other'] ??= []).add(dt);
     }
     if (byModule.isEmpty) {
       return const Center(child: Text('No DocTypes registered'));
@@ -74,10 +74,8 @@ class DocTypeListView extends ConsumerWidget {
                 leading: const Icon(Icons.article_outlined),
                 title: Text(types[i].name),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => (context as Element)
-                    .findAncestorWidgetOfExactType<Navigator>() != null
-                    ? GoRouter.of(context).go('/list/${types[i].id}')
-                    : null,
+                onTap: () =>
+                    GoRouter.of(context).go('/list/${types[i].id}'),
               ),
               if (i < types.length - 1) const Divider(height: 1),
             ],

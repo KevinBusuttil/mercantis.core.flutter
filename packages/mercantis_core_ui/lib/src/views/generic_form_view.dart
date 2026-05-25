@@ -5,6 +5,8 @@ import 'package:mercantis_core/mercantis_core.dart';
 import '../providers/core_providers.dart';
 import 'record_workspace_chrome.dart';
 
+const _userRoles = <String>{'System Manager'};
+
 final _fetchDocProvider =
     FutureProvider.family<Document?, (String, String?)>((ref, args) async {
   final (docTypeName, name) = args;
@@ -35,12 +37,11 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
 
   Document _apply(Document base) {
     if (_changes.isEmpty) return base;
-    final data = Map<String, dynamic>.from(base.data)..addAll(_changes);
-    return base.copyWith(data: data);
+    final payload = Map<String, dynamic>.from(base.payload)..addAll(_changes);
+    return base.copyWith(payload: payload);
   }
 
-  Document _emptyDoc() =>
-      Document(docType: widget.docTypeName, data: {});
+  Document _emptyDoc() => Document(id: '', docType: widget.docTypeName);
 
   Future<void> _save(DocumentEngine engine, Document current) async {
     setState(() {
@@ -48,27 +49,28 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       _error = null;
     });
     try {
-      await engine.save(current);
+      await engine.save(current, _userRoles);
       setState(() => _changes.clear());
+      ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  Future<void> _submit(DocumentEngine engine, String name) async {
+  Future<void> _submit(DocumentEngine engine, Document current) async {
     setState(() {
       _isSaving = true;
       _error = null;
     });
     try {
-      await engine.submit(widget.docTypeName, name);
-      ref.invalidate(_fetchDocProvider((widget.docTypeName, name)));
+      await engine.submit(current, _userRoles);
+      ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -93,20 +95,17 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
           final doc = _apply(base);
           final isSubmittable =
               metaAsync.valueOrNull?.docType.isSubmittable ?? false;
-          final docStatus = doc['docstatus'] as int? ?? 0;
+          final docStatus = doc.docStatus;
 
           return RecordWorkspaceChrome(
             docTypeName: widget.docTypeName,
-            documentName: doc['name'] as String?,
+            documentName: doc.id.isEmpty ? null : doc.id,
             isDirty: _isDirty,
             isSaving: _isSaving,
             isSubmittable: isSubmittable,
             docStatus: docStatus,
             onSave: () => _save(engine, doc),
-            onSubmit: () {
-              final name = doc['name'] as String?;
-              if (name != null) _submit(engine, name);
-            },
+            onSubmit: () => _submit(engine, doc),
             error: _error,
             child: metaAsync.when(
               loading: () =>
@@ -143,9 +142,7 @@ class _MetaForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fields = meta.visibleFields.where((f) =>
-        f.fieldType != FieldType.sectionBreak &&
-        f.fieldType != FieldType.columnBreak);
+    final fields = meta.visibleFields;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -156,9 +153,9 @@ class _MetaForm extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 12),
               child: FieldWidget(
                 field: f,
-                value: doc[f.fieldKey],
+                value: doc[f.key],
                 readOnly: readOnly,
-                onChanged: (v) => onChanged(f.fieldKey, v),
+                onChanged: (v) => onChanged(f.key, v),
               ),
             ),
         ],
@@ -177,7 +174,7 @@ class _RawForm extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          for (final e in doc.data.entries)
+          for (final e in doc.payload.entries)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: TextFormField(
@@ -205,11 +202,11 @@ class FieldWidget extends StatelessWidget {
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
 
-  String get _label => field.label ?? field.fieldKey;
+  String get _label => field.label;
 
   @override
   Widget build(BuildContext context) {
-    switch (field.fieldType) {
+    switch (field.type) {
       case FieldType.check:
         return CheckboxListTile(
           title: Text(_label),
@@ -219,7 +216,7 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.integer:
         return TextFormField(
-          key: ValueKey('${field.fieldKey}_${value}'),
+          key: ValueKey('${field.key}_$value'),
           initialValue: (value as int?)?.toString() ?? '',
           decoration: InputDecoration(labelText: _label),
           keyboardType: TextInputType.number,
@@ -230,12 +227,11 @@ class FieldWidget extends StatelessWidget {
       case FieldType.currency:
       case FieldType.percent:
         return TextFormField(
-          key: ValueKey('${field.fieldKey}_${value}'),
-          initialValue: (value as double?)?.toString() ?? '',
+          key: ValueKey('${field.key}_$value'),
+          initialValue: (value as num?)?.toString() ?? '',
           decoration: InputDecoration(
             labelText: _label,
-            suffixText:
-                field.fieldType == FieldType.percent ? '%' : null,
+            suffixText: field.type == FieldType.percent ? '%' : null,
           ),
           keyboardType:
               const TextInputType.numberWithOptions(decimal: true),
@@ -243,7 +239,10 @@ class FieldWidget extends StatelessWidget {
           onChanged: readOnly ? null : (v) => onChanged(double.tryParse(v)),
         );
       case FieldType.select:
-        final opts = (field.options ?? '').split('\n').where((o) => o.isNotEmpty).toList();
+        final opts = (field.options ?? '')
+            .split('\n')
+            .where((o) => o.isNotEmpty)
+            .toList();
         return DropdownButtonFormField<String>(
           value: value as String?,
           decoration: InputDecoration(labelText: _label),
@@ -261,7 +260,7 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.link:
         return TextFormField(
-          key: ValueKey('${field.fieldKey}_${value}'),
+          key: ValueKey('${field.key}_$value'),
           initialValue: value as String? ?? '',
           decoration: InputDecoration(
             labelText: _label,
@@ -283,9 +282,10 @@ class FieldWidget extends StatelessWidget {
           ),
         );
       case FieldType.longText:
-      case FieldType.textEditor:
+      case FieldType.smallText:
+      case FieldType.text:
         return TextFormField(
-          key: ValueKey('${field.fieldKey}_${value}'),
+          key: ValueKey('${field.key}_$value'),
           initialValue: value as String? ?? '',
           decoration: InputDecoration(labelText: _label),
           maxLines: 5,
@@ -294,7 +294,7 @@ class FieldWidget extends StatelessWidget {
         );
       default:
         return TextFormField(
-          key: ValueKey('${field.fieldKey}_${value}'),
+          key: ValueKey('${field.key}_$value'),
           initialValue: value?.toString() ?? '',
           decoration: InputDecoration(labelText: _label),
           readOnly: readOnly,
@@ -319,7 +319,7 @@ class _DateField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      key: ValueKey('date_${value}'),
+      key: ValueKey('date_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
         labelText: label,

@@ -40,8 +40,7 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
                 children: [
                   SizedBox(
                     width: 220,
-                    child: _Palette(
-                        onAdd: (ft) => _addField(ft)),
+                    child: _Palette(onAdd: (ft) => _addField(ft)),
                   ),
                   const VerticalDivider(width: 1),
                   Expanded(
@@ -73,13 +72,29 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
 }
 
 const _paletteGroups = [
-  ('Basic', [FieldType.data, FieldType.text, FieldType.longText, FieldType.integer, FieldType.float]),
+  ('Basic', [
+    FieldType.data,
+    FieldType.text,
+    FieldType.longText,
+    FieldType.integer,
+    FieldType.float,
+  ]),
   ('Choice', [FieldType.select, FieldType.check]),
-  ('Date / Time', [FieldType.date, FieldType.datetime, FieldType.time]),
+  ('Date / Time', [FieldType.date, FieldType.dateTime, FieldType.time]),
   ('Link', [FieldType.link, FieldType.dynamicLink]),
-  ('Layout', [FieldType.sectionBreak, FieldType.columnBreak, FieldType.heading, FieldType.html]),
-  ('Table', [FieldType.table, FieldType.tableMultiselect]),
-  ('Media', [FieldType.attach, FieldType.attachImage, FieldType.color, FieldType.signature, FieldType.barcode]),
+  ('Layout', [
+    FieldType.sectionBreak,
+    FieldType.columnBreak,
+    FieldType.heading,
+  ]),
+  ('Table', [FieldType.table, FieldType.tableMultiSelect]),
+  ('Media', [
+    FieldType.attach,
+    FieldType.attachImage,
+    FieldType.color,
+    FieldType.signature,
+    FieldType.barcode,
+  ]),
 ];
 
 class _Palette extends StatelessWidget {
@@ -101,7 +116,7 @@ class _Palette extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(8),
             children: [
-              for (final group in _paletteGroups) ...[  
+              for (final group in _paletteGroups) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       vertical: 6, horizontal: 4),
@@ -136,8 +151,7 @@ class _Palette extends StatelessWidget {
                                 size: 16, color: Colors.grey),
                             const SizedBox(width: 6),
                             Text(ft.name,
-                                style:
-                                    Theme.of(context).textTheme.bodySmall),
+                                style: Theme.of(context).textTheme.bodySmall),
                           ],
                         ),
                       ),
@@ -153,8 +167,11 @@ class _Palette extends StatelessWidget {
 }
 
 class _Canvas extends StatelessWidget {
-  const _Canvas(
-      {required this.meta, required this.selected, required this.onSelect});
+  const _Canvas({
+    required this.meta,
+    required this.selected,
+    required this.onSelect,
+  });
   final ResolvedMeta? meta;
   final ResolvedFieldDefinition? selected;
   final ValueChanged<ResolvedFieldDefinition?> onSelect;
@@ -166,8 +183,8 @@ class _Canvas extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
-          child:
-              Text('Canvas', style: Theme.of(context).textTheme.labelLarge),
+          child: Text('Canvas',
+              style: Theme.of(context).textTheme.labelLarge),
         ),
         const Divider(height: 1),
         Expanded(
@@ -179,12 +196,11 @@ class _Canvas extends StatelessWidget {
                   children: [
                     for (final f in meta!.fields)
                       GestureDetector(
-                        key: ValueKey(f.fieldKey),
+                        key: ValueKey(f.key),
                         onTap: () => onSelect(f),
                         child: _CanvasTile(
                           field: f,
-                          isSelected:
-                              selected?.fieldKey == f.fieldKey,
+                          isSelected: selected?.key == f.key,
                         ),
                       ),
                   ],
@@ -212,15 +228,15 @@ class _CanvasTile extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(8),
         color: isSelected
-            ? cs.primaryContainer.withOpacity(0.15)
+            ? cs.primaryContainer.withValues(alpha: 0.15)
             : cs.surface,
       ),
       child: ListTile(
         leading: const Icon(Icons.drag_indicator, color: Colors.grey),
-        title: Text(field.label ?? field.fieldKey),
-        subtitle: Text(field.fieldType.name,
+        title: Text(field.label),
+        subtitle: Text(field.type.name,
             style: Theme.of(context).textTheme.bodySmall),
-        trailing: (field.isMandatory ?? false)
+        trailing: field.required
             ? const Tooltip(
                 message: 'Required',
                 child: Icon(Icons.star, size: 14, color: Colors.red))
@@ -254,19 +270,17 @@ class _Inspector extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.all(12),
                   children: [
-                    _Row('Key', field!.fieldKey),
-                    _Row('Label', field!.label ?? '—'),
-                    _Row('Type', field!.fieldType.name),
-                    _Row('Required',
-                        (field!.isMandatory ?? false).toString()),
-                    _Row('Read Only',
-                        (field!.readOnly ?? false).toString()),
+                    _Row('Key', field!.key),
+                    _Row('Label', field!.label),
+                    _Row('Type', field!.type.name),
+                    _Row('Required', field!.required.toString()),
+                    _Row('Read Only', field!.readOnly.toString()),
                     if (field!.options != null)
                       _Row('Options', field!.options!),
                     if (field!.defaultValue != null)
                       _Row('Default', field!.defaultValue!),
-                    if (field!.conditionExpression != null)
-                      _Row('Condition', field!.conditionExpression!),
+                    if (field!.visibilityExpression != null)
+                      _Row('Visibility', field!.visibilityExpression!),
                   ],
                 ),
               ),
