@@ -215,20 +215,18 @@ class FieldWidget extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
         );
       case FieldType.integer:
-        return TextFormField(
-          key: ValueKey('${field.key}_$value'),
-          initialValue: (value as int?)?.toString() ?? '',
+        return _TextFieldEditor(
+          value: (value as int?)?.toString() ?? '',
           decoration: InputDecoration(labelText: _label),
           keyboardType: TextInputType.number,
           readOnly: readOnly,
-          onChanged: readOnly ? null : (v) => onChanged(int.tryParse(v)),
+          onChanged: (v) => onChanged(int.tryParse(v)),
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
-        return TextFormField(
-          key: ValueKey('${field.key}_$value'),
-          initialValue: (value as num?)?.toString() ?? '',
+        return _TextFieldEditor(
+          value: (value as num?)?.toString() ?? '',
           decoration: InputDecoration(
             labelText: _label,
             suffixText: field.type == FieldType.percent ? '%' : null,
@@ -236,7 +234,7 @@ class FieldWidget extends StatelessWidget {
           keyboardType:
               const TextInputType.numberWithOptions(decimal: true),
           readOnly: readOnly,
-          onChanged: readOnly ? null : (v) => onChanged(double.tryParse(v)),
+          onChanged: (v) => onChanged(double.tryParse(v)),
         );
       case FieldType.select:
         final opts = (field.options ?? '')
@@ -259,16 +257,15 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.link:
-        return TextFormField(
-          key: ValueKey('${field.key}_$value'),
-          initialValue: value as String? ?? '',
+        return _TextFieldEditor(
+          value: value as String? ?? '',
           decoration: InputDecoration(
             labelText: _label,
             hintText: 'Link to ${field.options ?? ""}',
             suffixIcon: const Icon(Icons.link),
           ),
           readOnly: readOnly,
-          onChanged: readOnly ? null : onChanged,
+          onChanged: onChanged,
         );
       case FieldType.heading:
         return Padding(
@@ -284,23 +281,75 @@ class FieldWidget extends StatelessWidget {
       case FieldType.longText:
       case FieldType.smallText:
       case FieldType.text:
-        return TextFormField(
-          key: ValueKey('${field.key}_$value'),
-          initialValue: value as String? ?? '',
+        return _TextFieldEditor(
+          value: value as String? ?? '',
           decoration: InputDecoration(labelText: _label),
           maxLines: 5,
           readOnly: readOnly,
-          onChanged: readOnly ? null : onChanged,
+          onChanged: onChanged,
         );
       default:
-        return TextFormField(
-          key: ValueKey('${field.key}_$value'),
-          initialValue: value?.toString() ?? '',
+        return _TextFieldEditor(
+          value: value?.toString() ?? '',
           decoration: InputDecoration(labelText: _label),
           readOnly: readOnly,
-          onChanged: readOnly ? null : onChanged,
+          onChanged: onChanged,
         );
     }
+  }
+}
+
+class _TextFieldEditor extends StatefulWidget {
+  const _TextFieldEditor({
+    required this.value,
+    required this.decoration,
+    required this.readOnly,
+    required this.onChanged,
+    this.keyboardType,
+    this.maxLines = 1,
+  });
+  final String value;
+  final InputDecoration decoration;
+  final bool readOnly;
+  final ValueChanged<String> onChanged;
+  final TextInputType? keyboardType;
+  final int maxLines;
+
+  @override
+  State<_TextFieldEditor> createState() => _TextFieldEditorState();
+}
+
+class _TextFieldEditorState extends State<_TextFieldEditor> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.value);
+
+  @override
+  void didUpdateWidget(_TextFieldEditor old) {
+    super.didUpdateWidget(old);
+    if (widget.value != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      decoration: widget.decoration,
+      keyboardType: widget.keyboardType,
+      maxLines: widget.maxLines,
+      readOnly: widget.readOnly,
+      onChanged: widget.readOnly ? null : widget.onChanged,
+    );
   }
 }
 
