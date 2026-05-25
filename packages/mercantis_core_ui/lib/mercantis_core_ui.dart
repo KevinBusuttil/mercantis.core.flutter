@@ -7,4 +7,5 @@ export 'src/views/doc_type_list_view.dart';
 export 'src/views/form_builder_view.dart';
 export 'src/views/generic_form_view.dart';
 export 'src/views/generic_list_view.dart';
+export 'src/views/record_collection_view.dart';
 export 'src/views/record_workspace_chrome.dart';
