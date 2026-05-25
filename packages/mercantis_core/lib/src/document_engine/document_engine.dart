@@ -8,6 +8,7 @@ import '../permissions/permission_engine.dart';
 import '../workflow/workflow_engine.dart';
 import '../expression_engine/expression_evaluator.dart';
 import '../naming/naming_service.dart';
+import '../naming/naming_strategy.dart';
 import '../sync_engine/sync_engine.dart';
 import '../sync_engine/mutation_record.dart';
 import '../notifications/event_emitter.dart';
