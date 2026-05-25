@@ -1,11 +1,12 @@
 name: mercantis_core_app
 description: Mercantis Core — development shell and studio.
 version: 1.0.0+1
+publish_to: none
 resolution: workspace
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
-  flutter: '>=3.24.0'
+  flutter: '>=3.27.0'
 
 dependencies:
   flutter:

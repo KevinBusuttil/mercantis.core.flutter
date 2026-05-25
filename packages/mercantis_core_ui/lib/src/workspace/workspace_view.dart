@@ -7,6 +7,7 @@ import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
 import '../widgets/quick_action_tile.dart';
 import 'dashboard_card_spec.dart';
+import 'quick_action.dart';
 import 'workspace_descriptor.dart';
 
 /// Dashboard host registry — Hub registers card data builders by id.
