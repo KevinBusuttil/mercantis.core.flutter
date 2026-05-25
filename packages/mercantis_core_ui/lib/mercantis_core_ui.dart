@@ -22,6 +22,10 @@ export 'src/workspace/workspace_visibility.dart';
 export 'src/workspace/workspace_view.dart';
 export 'src/workspace/quick_action.dart';
 export 'src/workspace/dashboard_card_spec.dart';
+export 'src/workspace/current_user.dart';
+
+// Metadata helpers
+export 'src/metadata/metadata_display.dart';
 
 // Panes
 export 'src/panes/responsive_split.dart';
@@ -41,8 +45,10 @@ export 'src/widgets/workflow_action_button.dart';
 export 'src/widgets/erp_data_table.dart';
 export 'src/widgets/search/global_search.dart';
 export 'src/widgets/search/global_search_service.dart';
+export 'src/widgets/search/metadata_search_source.dart';
 export 'src/widgets/approvals/approval_inbox.dart';
 export 'src/widgets/approvals/approval_inbox_service.dart';
+export 'src/widgets/approvals/metadata_approval_inbox_source.dart';
 
 // Legacy navigation (deprecated)
 export 'src/navigation/shell_router.dart';
@@ -54,5 +60,6 @@ export 'src/views/doc_type_list_view.dart';
 export 'src/views/form_builder_view.dart';
 export 'src/views/generic_form_view.dart';
 export 'src/views/generic_list_view.dart';
+export 'src/views/metadata_list_view.dart';
 export 'src/views/record_collection_view.dart';
 export 'src/views/record_workspace_chrome.dart';
