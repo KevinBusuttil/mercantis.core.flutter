@@ -4,6 +4,7 @@ class MigrationRunner {
   static Future<void> migrate(Database db) async {
     final version = await _schemaVersion(db);
     if (version < 1) await _v1(db);
+    if (version < 2) await _v2(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -149,5 +150,18 @@ class MigrationRunner {
         last_run_at INTEGER NOT NULL
       )
     ''');
+  }
+
+  /// v2: positioning support for end-user custom fields.
+  ///
+  /// Adds `insert_after` to `custom_fields` so users can place their own
+  /// field after any existing field on the form. `NULL` means "append to
+  /// the end of the form", matching the v1 behaviour for any pre-existing
+  /// rows on upgrade.
+  static Future<void> _v2(Database db) async {
+    await db.execute(
+      'ALTER TABLE custom_fields ADD COLUMN insert_after TEXT',
+    );
+    await db.update('schema_version', {'version': 2});
   }
 }

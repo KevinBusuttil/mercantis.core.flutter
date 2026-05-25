@@ -204,12 +204,40 @@ class FieldWidget extends StatelessWidget {
 
   String get _label => field.label;
 
+  /// Builds an `InputDecoration` that appends a red asterisk to the label
+  /// when the field is required. Using `label:` (a `Widget`) instead of
+  /// `labelText:` lets us inline the marker without giving up Material's
+  /// native floating-label behaviour.
+  InputDecoration _decoration(
+    BuildContext context, {
+    String? hintText,
+    Widget? suffixIcon,
+    String? suffixText,
+  }) {
+    return InputDecoration(
+      label: _RequiredAwareLabel(label: _label, required: field.required),
+      hintText: hintText,
+      suffixIcon: suffixIcon,
+      suffixText: suffixText,
+    );
+  }
+
+  /// Inline label widget for non-`InputDecoration` controls (heading,
+  /// checkbox, etc.) — same red-asterisk treatment.
+  Widget _inlineLabel(BuildContext context, {TextStyle? style}) {
+    return _RequiredAwareLabel(
+      label: _label,
+      required: field.required,
+      style: style,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (field.type) {
       case FieldType.check:
         return CheckboxListTile(
-          title: Text(_label),
+          title: _inlineLabel(context),
           value: (value as int? ?? 0) == 1,
           onChanged: readOnly ? null : (v) => onChanged(v == true ? 1 : 0),
           contentPadding: EdgeInsets.zero,
@@ -217,7 +245,7 @@ class FieldWidget extends StatelessWidget {
       case FieldType.integer:
         return _TextFieldEditor(
           value: (value as int?)?.toString() ?? '',
-          decoration: InputDecoration(labelText: _label),
+          decoration: _decoration(context),
           keyboardType: TextInputType.number,
           readOnly: readOnly,
           onChanged: (v) => onChanged(int.tryParse(v)),
@@ -227,8 +255,8 @@ class FieldWidget extends StatelessWidget {
       case FieldType.percent:
         return _TextFieldEditor(
           value: (value as num?)?.toString() ?? '',
-          decoration: InputDecoration(
-            labelText: _label,
+          decoration: _decoration(
+            context,
             suffixText: field.type == FieldType.percent ? '%' : null,
           ),
           keyboardType:
@@ -243,7 +271,7 @@ class FieldWidget extends StatelessWidget {
             .toList();
         return DropdownButtonFormField<String>(
           value: value as String?,
-          decoration: InputDecoration(labelText: _label),
+          decoration: _decoration(context),
           items: opts
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),
@@ -252,6 +280,7 @@ class FieldWidget extends StatelessWidget {
       case FieldType.date:
         return _DateField(
           label: _label,
+          required: field.required,
           value: value as String?,
           readOnly: readOnly,
           onChanged: onChanged,
@@ -259,8 +288,8 @@ class FieldWidget extends StatelessWidget {
       case FieldType.link:
         return _TextFieldEditor(
           value: value as String? ?? '',
-          decoration: InputDecoration(
-            labelText: _label,
+          decoration: _decoration(
+            context,
             hintText: 'Link to ${field.options ?? ""}',
             suffixIcon: const Icon(Icons.link),
           ),
@@ -270,8 +299,8 @@ class FieldWidget extends StatelessWidget {
       case FieldType.heading:
         return Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Text(
-            _label,
+          child: _inlineLabel(
+            context,
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
@@ -283,7 +312,7 @@ class FieldWidget extends StatelessWidget {
       case FieldType.text:
         return _TextFieldEditor(
           value: value as String? ?? '',
-          decoration: InputDecoration(labelText: _label),
+          decoration: _decoration(context),
           maxLines: 5,
           readOnly: readOnly,
           onChanged: onChanged,
@@ -291,11 +320,46 @@ class FieldWidget extends StatelessWidget {
       default:
         return _TextFieldEditor(
           value: value?.toString() ?? '',
-          decoration: InputDecoration(labelText: _label),
+          decoration: _decoration(context),
           readOnly: readOnly,
           onChanged: onChanged,
         );
     }
+  }
+}
+
+/// Field label that appends a red asterisk when the field is required.
+///
+/// Hides the asterisk from accessibility (a separate semantic label
+/// announces the field as "<label>, required") so screen readers don't
+/// hear a punctuation character.
+class _RequiredAwareLabel extends StatelessWidget {
+  const _RequiredAwareLabel({
+    required this.label,
+    required this.required,
+    this.style,
+  });
+  final String label;
+  final bool required;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = DefaultTextStyle.of(context).style.merge(style);
+    final asteriskStyle = base.copyWith(
+      color: Theme.of(context).colorScheme.error,
+      fontWeight: FontWeight.w600,
+    );
+    return Semantics(
+      label: required ? '$label, required' : label,
+      excludeSemantics: true,
+      child: RichText(
+        text: TextSpan(style: base, children: [
+          TextSpan(text: label),
+          if (required) TextSpan(text: ' *', style: asteriskStyle),
+        ]),
+      ),
+    );
   }
 }
 
@@ -356,11 +420,13 @@ class _TextFieldEditorState extends State<_TextFieldEditor> {
 class _DateField extends StatelessWidget {
   const _DateField({
     required this.label,
+    required this.required,
     required this.value,
     required this.readOnly,
     required this.onChanged,
   });
   final String label;
+  final bool required;
   final String? value;
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
@@ -371,7 +437,7 @@ class _DateField extends StatelessWidget {
       key: ValueKey('date_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
-        labelText: label,
+        label: _RequiredAwareLabel(label: label, required: required),
         suffixIcon: readOnly
             ? null
             : IconButton(

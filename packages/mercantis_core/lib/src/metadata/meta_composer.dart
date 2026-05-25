@@ -23,19 +23,39 @@ class MetaComposer {
         .map((f) => ResolvedFieldDefinition.fromFieldDefinition(f))
         .toList();
 
-    // Load custom fields
+    // Load custom fields and place each at its declared `insert_after`
+    // position. Rows that pre-date the v2 migration (or that the user has
+    // explicitly chosen to append) have `insert_after = NULL` and fall
+    // back to "end of form".
     final customRows = await _db.query(
       'custom_fields',
       where: 'doctype_id = ?',
       whereArgs: [docTypeId],
+      orderBy: 'rowid',
     );
     for (final row in customRows) {
       final fd = FieldDefinition.fromJson(
         jsonDecode(row['payload'] as String) as Map<String, dynamic>,
       );
-      resolvedFields.add(
-        ResolvedFieldDefinition.fromFieldDefinition(fd, isCustomField: true),
+      final resolved = ResolvedFieldDefinition.fromFieldDefinition(
+        fd,
+        isCustomField: true,
       );
+      final insertAfter = row['insert_after'] as String?;
+      if (insertAfter == null || insertAfter.isEmpty) {
+        resolvedFields.add(resolved);
+        continue;
+      }
+      final anchorIndex =
+          resolvedFields.indexWhere((f) => f.key == insertAfter);
+      if (anchorIndex < 0) {
+        // Anchor field doesn't exist (e.g. base field was removed in a
+        // later manifest version). Fall back to append so the user's
+        // field doesn't silently disappear.
+        resolvedFields.add(resolved);
+      } else {
+        resolvedFields.insert(anchorIndex + 1, resolved);
+      }
     }
 
     // Load property setters and apply overrides
