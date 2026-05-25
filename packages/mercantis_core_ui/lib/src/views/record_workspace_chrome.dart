@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'command_bar_view.dart';
+import 'customize_fields_sheet.dart';
 
 class RecordWorkspaceChrome extends StatefulWidget {
   const RecordWorkspaceChrome({
@@ -56,6 +57,16 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.documentName ?? 'New ${widget.docTypeName}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Customize fields',
+            onPressed: () => showCustomizeFieldsDialog(
+              context,
+              docTypeName: widget.docTypeName,
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           tabs: const [
