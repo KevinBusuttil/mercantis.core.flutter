@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../workspace/workspace_registry.dart';
 import '../workspace/workspace_descriptor.dart';
 import '../views/generic_form_view.dart';
-import '../views/record_collection_view.dart';
+import '../views/metadata_list_view.dart';
 import 'adaptive_shell.dart';
 import '../workspace/workspace_view.dart';
 
@@ -61,7 +61,7 @@ class AppNavigationRegistry {
             ),
             GoRoute(
               path: '/list/:docType',
-              builder: (context, state) => RecordCollectionView(
+              builder: (context, state) => MetadataListView(
                 docTypeName: state.pathParameters['docType']!,
               ),
             ),
