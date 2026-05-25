@@ -12,6 +12,7 @@ import '../sync_engine/sync_engine.dart';
 import '../sync_engine/mutation_record.dart';
 import '../notifications/event_emitter.dart';
 import 'document.dart';
+import 'document_version.dart';
 import 'validation_pipeline.dart';
 
 class ConcurrencyConflictError implements Exception {
@@ -392,35 +393,4 @@ class DocumentEngine {
     );
     return save(amended, userRoles);
   }
-}
-
-class DocumentVersion {
-  static List<FieldDiff> computeDiff(
-    Map<String, dynamic> oldPayload,
-    Map<String, dynamic> newPayload,
-  ) {
-    final diffs = <FieldDiff>[];
-    final allKeys = {...oldPayload.keys, ...newPayload.keys};
-    for (final key in allKeys) {
-      final oldVal = oldPayload[key];
-      final newVal = newPayload[key];
-      if ('$oldVal' != '$newVal') {
-        diffs.add(FieldDiff(fieldKey: key, oldValue: oldVal, newValue: newVal));
-      }
-    }
-    return diffs;
-  }
-}
-
-class FieldDiff {
-  final String fieldKey;
-  final dynamic oldValue;
-  final dynamic newValue;
-  const FieldDiff(
-      {required this.fieldKey, this.oldValue, this.newValue});
-  Map<String, dynamic> toJson() => {
-        'fieldKey': fieldKey,
-        'oldValue': oldValue,
-        'newValue': newValue,
-      };
 }

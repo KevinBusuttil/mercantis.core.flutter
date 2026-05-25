@@ -59,7 +59,7 @@ class GenericListView extends ConsumerWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final doc = docs[i];
-        final name = doc['name'] as String? ?? '—';
+        final name = doc.id.isEmpty ? '—' : doc.id;
         final status = doc['status'] as String?;
         return Card(
           child: ListTile(
