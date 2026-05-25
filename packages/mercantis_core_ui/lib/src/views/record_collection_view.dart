@@ -60,9 +60,10 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
         ref.watch(_resolvedDocTypeProvider(widget.docTypeName));
 
     final resolvedTitle = widget.title ??
-        docTypeAsync.maybeWhen(
-            data: (dt) => dt?.name ?? widget.docTypeName,
-            orElse: () => widget.docTypeName);
+        docTypeAsync.maybeWhen<String>(
+          data: (dt) => dt?.name ?? widget.docTypeName,
+          orElse: () => widget.docTypeName,
+        );
 
     return Scaffold(
       appBar: AppBar(
