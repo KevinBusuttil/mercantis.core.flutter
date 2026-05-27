@@ -517,17 +517,28 @@ class FieldWidget extends StatelessWidget {
   /// when the field is required. Using `label:` (a `Widget`) instead of
   /// `labelText:` lets us inline the marker without giving up Material's
   /// native floating-label behaviour.
+  ///
+  /// Inside a child-table data cell (detected via [ChildTableContext]),
+  /// the external label is dropped and the field name becomes
+  /// `hintText` instead — the column header already carries the label,
+  /// and Material's floating label otherwise eats so much horizontal
+  /// space that narrow cells collapse to per-character columns. Mirrors
+  /// Swift PR #121's `mercantisInput()` `.labelsHidden()` fix.
   InputDecoration _decoration(
     BuildContext context, {
     String? hintText,
     Widget? suffixIcon,
     String? suffixText,
   }) {
+    final inline = ChildTableContext.isInline(context);
     return InputDecoration(
-      label: _RequiredAwareLabel(label: _label, required: field.required),
-      hintText: hintText,
+      label: inline
+          ? null
+          : _RequiredAwareLabel(label: _label, required: field.required),
+      hintText: hintText ?? (inline ? _label : null),
       suffixIcon: suffixIcon,
       suffixText: suffixText,
+      isDense: inline,
     );
   }
 
@@ -741,11 +752,16 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final inline = ChildTableContext.isInline(context);
     return TextFormField(
       key: ValueKey('date_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
-        label: _RequiredAwareLabel(label: label, required: required),
+        label: inline
+            ? null
+            : _RequiredAwareLabel(label: label, required: required),
+        hintText: inline ? label : null,
+        isDense: inline,
         suffixIcon: readOnly
             ? null
             : IconButton(

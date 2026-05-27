@@ -4,6 +4,35 @@ import 'package:mercantis_core/mercantis_core.dart';
 
 import '../shell/breakpoints.dart';
 
+/// Marker passed down to every shared input wrapper inside a
+/// child-table data cell. The cell consumer reads it through
+/// [ChildTableContext.isInline] and suppresses the field's external
+/// `labelText` — the column header already carries the label, and a
+/// floating Material label would eat horizontal space and collapse the
+/// cell into unreadable per-character columns.
+///
+/// Mirrors the Swift fix in `mercantisInput()` from PR #121: strip the
+/// platform-default label/chrome inside child-table cells.
+class ChildTableContext extends InheritedWidget {
+  const ChildTableContext({
+    super.key,
+    required this.inline,
+    required super.child,
+  });
+
+  /// `true` while building a widget inside a child-table data cell.
+  final bool inline;
+
+  static bool isInline(BuildContext context) {
+    final ctx = context.dependOnInheritedWidgetOfExactType<ChildTableContext>();
+    return ctx?.inline ?? false;
+  }
+
+  @override
+  bool updateShouldNotify(ChildTableContext oldWidget) =>
+      inline != oldWidget.inline;
+}
+
 /// Shared horizontal padding between header label cells and data cells.
 /// Header and rows MUST use the same value — Swift PR #125 was a regression
 /// caused by header using 10pt and rows using 8pt, leaving every column
@@ -362,42 +391,48 @@ class _DataRow extends StatelessWidget {
     final bg = rowIndex.isEven
         ? Colors.transparent
         : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.4);
-    return Container(
-      color: bg,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: _kIndexCellWidth,
-            child: Center(
-              child: Text(
-                '${rowIndex + 1}',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+    // Inline cells advertise themselves via [ChildTableContext] so any
+    // shared input wrapper inside the cell (FieldWidget, future custom
+    // pickers, etc.) can suppress its external label and field chrome.
+    return ChildTableContext(
+      inline: true,
+      child: Container(
+        color: bg,
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: _kIndexCellWidth,
+              child: Center(
+                child: Text(
+                  '${rowIndex + 1}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
-          ),
-          for (final f in fields)
-            Expanded(
-              flex: _minWidth(f).round(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: kChildTableCellHPadding,
+            for (final f in fields)
+              Expanded(
+                flex: _minWidth(f).round(),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: kChildTableCellHPadding,
+                  ),
+                  child: _cell(context, f),
                 ),
-                child: _cell(context, f),
+              ),
+            SizedBox(
+              width: _kTrailingCellWidth,
+              child: IconButton(
+                tooltip: 'Edit row',
+                icon: const Icon(Icons.more_vert, size: 18),
+                onPressed: onOpenEditor,
               ),
             ),
-          SizedBox(
-            width: _kTrailingCellWidth,
-            child: IconButton(
-              tooltip: 'Edit row',
-              icon: const Icon(Icons.more_vert, size: 18),
-              onPressed: onOpenEditor,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
