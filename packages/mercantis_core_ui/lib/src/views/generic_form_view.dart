@@ -17,12 +17,13 @@ final _fetchDocProvider =
   return engine.fetch(docTypeName, name);
 });
 
-/// Prefetches every child-table [DocType] referenced by a parent form
-/// so the synchronous resolver wired into [GenericFormView] can answer
-/// without rebuilding through Riverpod. Without this map the child-table
-/// widget falls back to the "Wire childDocTypeProvider…" warning and
-/// the form is unusable for any DocType with table fields. Returns an
-/// empty map when meta is missing.
+/// Prefetches every child-table and link [DocType] referenced by a
+/// parent form so the synchronous resolver wired into [GenericFormView]
+/// can answer without rebuilding through Riverpod. Without this map the
+/// child-table widget falls back to the "Wire childDocTypeProvider…"
+/// warning and the link picker can't read the target's title field
+/// (forcing it onto a key-name heuristic). Returns an empty map when
+/// meta is missing.
 final _referencedDocTypesProvider =
     FutureProvider.family<Map<String, DocType>, String>(
         (ref, docTypeName) async {
@@ -33,6 +34,8 @@ final _referencedDocTypesProvider =
   for (final f in meta.fields) {
     final t = f.tableDocType;
     if (t != null && t.isNotEmpty) ids.add(t);
+    final l = f.linkDocType;
+    if (l != null && l.isNotEmpty) ids.add(l);
   }
   final out = <String, DocType>{};
   for (final id in ids) {

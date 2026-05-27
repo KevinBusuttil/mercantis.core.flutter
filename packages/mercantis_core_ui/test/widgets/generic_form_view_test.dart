@@ -139,6 +139,30 @@ void main() {
     expect(find.text('Item Code'), findsOneWidget);
     expect(find.text('Qty'), findsOneWidget);
   });
+
+  testWidgets('link picker fallback lists seeded records by their title',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(wrap(const GenericFormView(
+      docTypeName: 'Demo Order',
+      documentName: null,
+    )));
+    await _drain(tester);
+
+    await tester.tap(find.text('Link to Customer'));
+    await _drain(tester);
+
+    expect(find.text('Select Customer'), findsOneWidget);
+    // The prefetched Customer DocType lets the picker resolve titles
+    // from the registry's first string field — without it the picker
+    // would still fall back to the candidate-key heuristic, but only
+    // the registry path is robust to non-canonical title keys.
+    expect(find.text('ACME Corp'), findsOneWidget);
+    expect(find.text('Globex'), findsOneWidget);
+  });
 }
 
 /// `WidgetTester.pumpAndSettle` never settles here — the form's many
