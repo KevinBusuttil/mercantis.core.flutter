@@ -17,6 +17,34 @@ final _fetchDocProvider =
   return engine.fetch(docTypeName, name);
 });
 
+/// Prefetches every child-table and link [DocType] referenced by a
+/// parent form so the synchronous resolver wired into [GenericFormView]
+/// can answer without rebuilding through Riverpod. Without this map the
+/// child-table widget falls back to the "Wire childDocTypeProvider…"
+/// warning and the link picker can't read the target's title field
+/// (forcing it onto a key-name heuristic). Returns an empty map when
+/// meta is missing.
+final _referencedDocTypesProvider =
+    FutureProvider.family<Map<String, DocType>, String>(
+        (ref, docTypeName) async {
+  final meta = await ref.watch(resolvedMetaProvider(docTypeName).future);
+  if (meta == null) return const {};
+  final registry = await ref.watch(metadataRegistryProvider.future);
+  final ids = <String>{};
+  for (final f in meta.fields) {
+    final t = f.tableDocType;
+    if (t != null && t.isNotEmpty) ids.add(t);
+    final l = f.linkDocType;
+    if (l != null && l.isNotEmpty) ids.add(l);
+  }
+  final out = <String, DocType>{};
+  for (final id in ids) {
+    final dt = await registry.get(id);
+    if (dt != null) out[id] = dt;
+  }
+  return out;
+});
+
 class GenericFormView extends ConsumerStatefulWidget {
   const GenericFormView({
     super.key,
@@ -104,6 +132,15 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
         ref.watch(_fetchDocProvider((widget.docTypeName, widget.documentName)));
     final engineAsync = ref.watch(documentEngineProvider);
     final metaAsync = ref.watch(resolvedMetaProvider(widget.docTypeName));
+    final referencedAsync =
+        ref.watch(_referencedDocTypesProvider(widget.docTypeName));
+    final referenced = referencedAsync.valueOrNull ?? const <String, DocType>{};
+
+    // Default resolver: read from the prefetched map. Callers can still
+    // override with their own (e.g. async HTTP-backed) implementation.
+    DocType? defaultResolver(String id) => referenced[id];
+    final effectiveChildResolver =
+        widget.childDocTypeProvider ?? defaultResolver;
 
     return fetchAsync.when(
       loading: () =>
@@ -141,7 +178,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                       sectionColumns: widget.sectionColumns,
                       onChanged: (k, v) => setState(() => _changes[k] = v),
                       linkSearchProvider: widget.linkSearchProvider,
-                      childDocTypeProvider: widget.childDocTypeProvider,
+                      childDocTypeProvider: effectiveChildResolver,
                     )
                   : _RawForm(doc: doc),
             ),
