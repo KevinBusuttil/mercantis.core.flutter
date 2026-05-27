@@ -349,12 +349,17 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Stroke runs at full opacity (was 0.8 pre-PR #124 — see Swift commit)
-    // because the card sits on the sheet's bare surface now; without a
-    // muted backdrop the stroke alone has to carry the visual grouping.
+    // With no muted backdrop behind us (the sheet's bare surface shows
+    // through, matching Swift PR #124's HIG-aligned pattern), the stroke
+    // alone has to carry the visual grouping. Switched to `outline`
+    // (the darker stroke role) from the faint `outlineVariant` so cards
+    // still read as discrete groups — Swift bumped its equivalent
+    // 0.8 → 1.0 opacity for the same reason.
     final cardShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(10),
-      side: BorderSide(color: theme.colorScheme.outlineVariant),
+      side: BorderSide(
+        color: theme.colorScheme.outline.withValues(alpha: 0.6),
+      ),
     );
     final showTitle = name.trim().isNotEmpty;
     return Column(
