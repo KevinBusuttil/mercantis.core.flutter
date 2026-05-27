@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../providers/core_providers.dart';
+import '../widgets/link_picker_field.dart';
 import 'record_workspace_chrome.dart';
 
 const _userRoles = <String>{'System Manager'};
@@ -195,11 +196,24 @@ class FieldWidget extends StatelessWidget {
     required this.value,
     required this.readOnly,
     required this.onChanged,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final ResolvedFieldDefinition field;
   final dynamic value;
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
+
+  /// Optional callback used by the link picker sheet to resolve
+  /// search results. When `null` the picker falls back to a client-side
+  /// scan via `documentEngineProvider`.
+  final LinkSearchProvider? linkSearchProvider;
+
+  /// Optional resolver for the target [DocType] of a link / child-table
+  /// field. The picker uses it to prefer the registry's title field
+  /// over the built-in key heuristic; supplied as part of the
+  /// provider-forwarding contract from Swift PR #113.
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   String get _label => field.label;
 
@@ -284,14 +298,14 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.link:
-        return _TextFieldEditor(
-          value: value as String? ?? '',
-          decoration: _decoration(
-            context,
-            hintText: 'Link to ${field.options ?? ""}',
-            suffixIcon: const Icon(Icons.link),
-          ),
+        return LinkPickerField(
+          label: _label,
+          targetDocType: field.linkDocType ?? field.options ?? '',
+          value: value as String?,
+          required: field.required,
           readOnly: readOnly,
+          searchProvider: linkSearchProvider,
+          targetDocTypeResolver: childDocTypeProvider,
           onChanged: onChanged,
         );
       case FieldType.heading:

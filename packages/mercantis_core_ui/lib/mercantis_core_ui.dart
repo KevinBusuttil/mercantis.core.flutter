@@ -43,6 +43,7 @@ export 'src/widgets/empty_state.dart';
 export 'src/widgets/quick_action_tile.dart';
 export 'src/widgets/workflow_action_button.dart';
 export 'src/widgets/erp_data_table.dart';
+export 'src/widgets/link_picker_field.dart';
 export 'src/widgets/search/global_search.dart';
 export 'src/widgets/search/global_search_service.dart';
 export 'src/widgets/search/metadata_search_source.dart';
