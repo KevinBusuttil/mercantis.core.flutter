@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../providers/core_providers.dart';
+import '../widgets/link_picker_field.dart';
 
 final _recordCollectionProvider =
     FutureProvider.family<List<Document>, String>((ref, docTypeName) async {
@@ -34,6 +35,16 @@ typedef RecordSaveHandler = Future<Document> Function(Document document);
 /// [DocumentEngineError.humanMessage] when available.
 typedef RecordDeleteHandler = Future<void> Function(Document document);
 
+/// Builder for a custom detail editor — mirrors Swift PR #113's
+/// `detailEditor: ((Binding<Document>) -> AnyView)?` slot. Replaces the
+/// view's default routed form when supplied; the host suppresses the
+/// per-row Save action because the editor is expected to own Save.
+typedef RecordDetailEditorBuilder = Widget Function(
+  BuildContext context,
+  DocType docType,
+  Document document,
+);
+
 /// A reusable record workspace surface for a DocType.
 ///
 /// Provides:
@@ -60,6 +71,9 @@ class RecordCollectionView extends ConsumerStatefulWidget {
     this.newButtonLabel,
     this.onSaveDocument,
     this.onDeleteDocument,
+    this.detailEditor,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
 
   final String docTypeName;
@@ -76,6 +90,28 @@ class RecordCollectionView extends ConsumerStatefulWidget {
   /// a destructive `Delete` row action with an `AlertDialog`
   /// confirmation; hidden when `docStatus == 1`.
   final RecordDeleteHandler? onDeleteDocument;
+
+  /// Optional caller-owned editor used in place of the routed
+  /// `GenericFormView` when the host renders a detail pane. When
+  /// supplied, the per-row Save action is suppressed because the
+  /// editor is expected to own Save (matching Swift PR #113's
+  /// `detailEditor == nil ? builtInSave : nothing` guard). On phone /
+  /// list-only layouts this view doesn't host a detail pane today, so
+  /// the slot is also forwarded into [CreateRecordSheet] for embedders
+  /// that want a bespoke create form.
+  final RecordDetailEditorBuilder? detailEditor;
+
+  /// Caller-supplied lookup for link-picker search results. Forwarded
+  /// into embedded forms (and the create sheet) so external shells can
+  /// inject a server-backed search without coupling Core to a
+  /// particular transport.
+  final LinkSearchProvider? linkSearchProvider;
+
+  /// Caller-supplied resolver for a link / child-table target DocType.
+  /// Lets the form prefer the registry's title field when rendering
+  /// link picker rows, and lets embedders short-circuit the registry
+  /// lookup (e.g. resolve a virtual DocType).
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   @override
   ConsumerState<RecordCollectionView> createState() =>
@@ -172,12 +208,18 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
               itemBuilder: (context, i) => _RecordTile(
                 doc: filtered[i],
                 docTypeName: widget.docTypeName,
-                onSave: widget.onSaveDocument == null
+                // Suppress the per-row Save when the caller supplies a
+                // custom detailEditor — that editor is expected to own
+                // its own Save affordance (Swift PR #113 contract).
+                onSave: (widget.onSaveDocument == null ||
+                        widget.detailEditor != null)
                     ? null
                     : () => _performSave(filtered[i]),
                 onDelete: widget.onDeleteDocument == null
                     ? null
                     : () => _confirmDelete(filtered[i]),
+                detailEditor: widget.detailEditor,
+                docTypeResolver: widget.childDocTypeProvider,
               ),
             ),
           ),
@@ -354,17 +396,21 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _RecordTile extends StatelessWidget {
+class _RecordTile extends ConsumerWidget {
   const _RecordTile({
     required this.doc,
     required this.docTypeName,
     this.onSave,
     this.onDelete,
+    this.detailEditor,
+    this.docTypeResolver,
   });
   final Document doc;
   final String docTypeName;
   final VoidCallback? onSave;
   final VoidCallback? onDelete;
+  final RecordDetailEditorBuilder? detailEditor;
+  final DocType? Function(String)? docTypeResolver;
 
   String _primaryLabel() {
     if (doc.id.isNotEmpty) return doc.id;
@@ -382,8 +428,32 @@ class _RecordTile extends StatelessWidget {
   /// always errors. The engine itself also blocks the operation.
   bool get _canDelete => onDelete != null && doc.docStatus != 1;
 
+  Future<void> _openRow(BuildContext context, WidgetRef ref) async {
+    final builder = detailEditor;
+    if (builder == null) {
+      GoRouter.of(context).go('/form/$docTypeName/${doc.id}');
+      return;
+    }
+    // Resolve the DocType so the custom editor receives the same shape
+    // its Swift counterpart did (`(Binding<Document>) -> AnyView` plus
+    // the surrounding `docType`). Prefer the injected resolver — it's
+    // what callers reach for when they want to short-circuit the
+    // registry (e.g. virtual DocTypes).
+    DocType? type = docTypeResolver?.call(docTypeName);
+    if (type == null) {
+      final registry = await ref.read(metadataRegistryProvider.future);
+      type = await registry.get(docTypeName);
+    }
+    if (!context.mounted || type == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (ctx) => builder(ctx, type!, doc),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final hasActions = onSave != null || _canDelete;
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -397,7 +467,7 @@ class _RecordTile extends StatelessWidget {
                 onDelete: _canDelete ? onDelete : null,
               )
             : const Icon(Icons.chevron_right),
-        onTap: () => GoRouter.of(context).go('/form/$docTypeName/${doc.id}'),
+        onTap: () => _openRow(context, ref),
       ),
     );
   }

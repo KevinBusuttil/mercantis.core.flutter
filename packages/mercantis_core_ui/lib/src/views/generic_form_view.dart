@@ -21,9 +21,19 @@ class GenericFormView extends ConsumerStatefulWidget {
     super.key,
     required this.docTypeName,
     required this.documentName,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final String docTypeName;
   final String? documentName;
+
+  /// Optional caller-supplied link picker search provider, forwarded
+  /// to every link [FieldWidget]. Mirrors Swift PR #113.
+  final LinkSearchProvider? linkSearchProvider;
+
+  /// Optional resolver for a link target's [DocType] — used by the
+  /// link picker to prefer the registry's title field.
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   @override
   ConsumerState<GenericFormView> createState() => _GenericFormViewState();
@@ -118,6 +128,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                       meta: meta,
                       readOnly: docStatus != 0,
                       onChanged: (k, v) => setState(() => _changes[k] = v),
+                      linkSearchProvider: widget.linkSearchProvider,
+                      childDocTypeProvider: widget.childDocTypeProvider,
                     )
                   : _RawForm(doc: doc),
             ),
@@ -134,11 +146,15 @@ class _MetaForm extends StatelessWidget {
     required this.meta,
     required this.readOnly,
     required this.onChanged,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final Document doc;
   final ResolvedMeta meta;
   final bool readOnly;
   final void Function(String key, dynamic value) onChanged;
+  final LinkSearchProvider? linkSearchProvider;
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +172,8 @@ class _MetaForm extends StatelessWidget {
                 value: doc[f.key],
                 readOnly: readOnly,
                 onChanged: (v) => onChanged(f.key, v),
+                linkSearchProvider: linkSearchProvider,
+                childDocTypeProvider: childDocTypeProvider,
               ),
             ),
         ],
