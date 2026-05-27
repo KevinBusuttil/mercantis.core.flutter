@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../providers/core_providers.dart';
+import '../widgets/child_table_field.dart';
 import '../widgets/link_picker_field.dart';
 import 'record_workspace_chrome.dart';
 
@@ -23,6 +24,7 @@ class GenericFormView extends ConsumerStatefulWidget {
     required this.documentName,
     this.linkSearchProvider,
     this.childDocTypeProvider,
+    this.sectionColumns,
   });
   final String docTypeName;
   final String? documentName;
@@ -32,8 +34,17 @@ class GenericFormView extends ConsumerStatefulWidget {
   final LinkSearchProvider? linkSearchProvider;
 
   /// Optional resolver for a link target's [DocType] — used by the
-  /// link picker to prefer the registry's title field.
+  /// link picker to prefer the registry's title field, and by the new
+  /// child-table grid to resolve `tableDocType` references.
   final DocType? Function(String docTypeId)? childDocTypeProvider;
+
+  /// Optional per-section column hint. Swift PR #122's `columns: 2`
+  /// equivalent — sections listed here lay their compact fields out as
+  /// pairs; stacked field types (table, longText, multiselect, image,
+  /// table) still span the full width. Section name is the same string
+  /// used in [FieldDefinition.section]; the empty-string key targets
+  /// fields with no explicit section.
+  final Map<String, int>? sectionColumns;
 
   @override
   ConsumerState<GenericFormView> createState() => _GenericFormViewState();
@@ -127,6 +138,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                       doc: doc,
                       meta: meta,
                       readOnly: docStatus != 0,
+                      sectionColumns: widget.sectionColumns,
                       onChanged: (k, v) => setState(() => _changes[k] = v),
                       linkSearchProvider: widget.linkSearchProvider,
                       childDocTypeProvider: widget.childDocTypeProvider,
@@ -140,12 +152,43 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   }
 }
 
+/// Internal section bucket. We bucket [ResolvedFieldDefinition]s by
+/// their `section` string and tag each bucket with its requested column
+/// count so the renderer can pair-up compact fields.
+class _SectionGroup {
+  _SectionGroup({
+    required this.name,
+    required this.columns,
+    required this.fields,
+  });
+  final String name;
+  final int columns;
+  final List<ResolvedFieldDefinition> fields;
+}
+
+/// Render decision for one row of a two-column section.
+sealed class _PairedRow {
+  const _PairedRow();
+}
+
+class _Pair extends _PairedRow {
+  const _Pair(this.left, this.right);
+  final ResolvedFieldDefinition left;
+  final ResolvedFieldDefinition? right;
+}
+
+class _Full extends _PairedRow {
+  const _Full(this.field);
+  final ResolvedFieldDefinition field;
+}
+
 class _MetaForm extends StatelessWidget {
   const _MetaForm({
     required this.doc,
     required this.meta,
     required this.readOnly,
     required this.onChanged,
+    this.sectionColumns,
     this.linkSearchProvider,
     this.childDocTypeProvider,
   });
@@ -153,31 +196,271 @@ class _MetaForm extends StatelessWidget {
   final ResolvedMeta meta;
   final bool readOnly;
   final void Function(String key, dynamic value) onChanged;
+  final Map<String, int>? sectionColumns;
   final LinkSearchProvider? linkSearchProvider;
   final DocType? Function(String docTypeId)? childDocTypeProvider;
 
+  List<_SectionGroup> _groupedSections() {
+    final groups = <String, _SectionGroup>{};
+    final order = <String>[];
+    for (final f in meta.visibleFields) {
+      final key = f.section ?? '';
+      final cols = sectionColumns?[key] ?? 1;
+      final g = groups.putIfAbsent(key, () {
+        order.add(key);
+        return _SectionGroup(name: key, columns: cols, fields: []);
+      });
+      g.fields.add(f);
+    }
+    return [for (final k in order) groups[k]!];
+  }
+
+  /// Lays the supplied fields out as either a sequence of pairs or full
+  /// rows. Stacked field types (table, longText, multiselect, image)
+  /// break the pair and span both columns — matches the Swift policy.
+  List<_PairedRow> _paired(List<ResolvedFieldDefinition> fields) {
+    final out = <_PairedRow>[];
+    ResolvedFieldDefinition? pending;
+    for (final f in fields) {
+      if (_usesStackedLayout(f)) {
+        if (pending != null) {
+          out.add(_Pair(pending, null));
+          pending = null;
+        }
+        out.add(_Full(f));
+      } else if (pending != null) {
+        out.add(_Pair(pending, f));
+        pending = null;
+      } else {
+        pending = f;
+      }
+    }
+    if (pending != null) out.add(_Pair(pending, null));
+    return out;
+  }
+
+  bool _usesStackedLayout(ResolvedFieldDefinition f) {
+    switch (f.type) {
+      case FieldType.table:
+      case FieldType.tableMultiSelect:
+      case FieldType.longText:
+      case FieldType.attach:
+      case FieldType.attachImage:
+      case FieldType.code:
+      case FieldType.signature:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _containsTable(_SectionGroup g) => g.fields.any(
+      (f) => f.type == FieldType.table || f.type == FieldType.tableMultiSelect);
+
   @override
   Widget build(BuildContext context) {
-    final fields = meta.visibleFields;
+    final groups = _groupedSections();
+    // Sheet surface shows through directly — no muted backdrop. Cards
+    // differentiate via stroke alone, matching the modern HIG sheet
+    // pattern PR #124 adopted on the Swift side.
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final f in fields)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: FieldWidget(
-                field: f,
-                value: doc[f.key],
-                readOnly: readOnly,
-                onChanged: (v) => onChanged(f.key, v),
-                linkSearchProvider: linkSearchProvider,
-                childDocTypeProvider: childDocTypeProvider,
-              ),
+          for (final g in groups) ...[
+            _SectionCard(
+              name: g.name,
+              containsTable: _containsTable(g),
+              child: g.columns >= 2
+                  ? _TwoColumnLayout(
+                      rows: _paired(g.fields),
+                      buildField: (f, stacked) => _buildField(f, stacked),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final f in g.fields)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildField(f, _usesStackedLayout(f)),
+                          ),
+                      ],
+                    ),
             ),
+            const SizedBox(height: 14),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildField(ResolvedFieldDefinition f, bool stacked) {
+    final isTable =
+        f.type == FieldType.table || f.type == FieldType.tableMultiSelect;
+    if (isTable) {
+      final targetName = f.tableDocType ?? f.options ?? '';
+      final resolved = childDocTypeProvider?.call(targetName);
+      final rows = _rowsFor(f.key);
+      return _LabelledField(
+        label: f.label,
+        required: f.required,
+        child: ChildTableField(
+          field: f,
+          childDocType: resolved,
+          rows: rows,
+          readOnly: readOnly || f.readOnly,
+          onChanged: (next) => onChanged(f.key, next),
+        ),
+      );
+    }
+    return FieldWidget(
+      field: f,
+      value: doc[f.key],
+      readOnly: readOnly,
+      onChanged: (v) => onChanged(f.key, v),
+      linkSearchProvider: linkSearchProvider,
+      childDocTypeProvider: childDocTypeProvider,
+    );
+  }
+
+  List<Map<String, dynamic>> _rowsFor(String key) {
+    final raw = doc[key];
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    }
+    return const [];
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.name,
+    required this.containsTable,
+    required this.child,
+  });
+  final String name;
+  final bool containsTable;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // With no muted backdrop behind us (the sheet's bare surface shows
+    // through, matching Swift PR #124's HIG-aligned pattern), the stroke
+    // alone has to carry the visual grouping. Switched to `outline`
+    // (the darker stroke role) from the faint `outlineVariant` so cards
+    // still read as discrete groups — Swift bumped its equivalent
+    // 0.8 → 1.0 opacity for the same reason.
+    final cardShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+      side: BorderSide(
+        color: theme.colorScheme.outline.withValues(alpha: 0.6),
+      ),
+    );
+    final showTitle = name.trim().isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showTitle)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+            child: Text(
+              name.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        Material(
+          color: theme.colorScheme.surface,
+          shape: cardShape,
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: containsTable
+                ? const EdgeInsets.all(4)
+                : const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: child,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LabelledField extends StatelessWidget {
+  const _LabelledField({
+    required this.label,
+    required this.required,
+    required this.child,
+  });
+  final String label;
+  final bool required;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+            child: Text(
+              required ? '$label *' : label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _TwoColumnLayout extends StatelessWidget {
+  const _TwoColumnLayout({
+    required this.rows,
+    required this.buildField,
+  });
+  final List<_PairedRow> rows;
+  final Widget Function(ResolvedFieldDefinition field, bool stacked) buildField;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: switch (row) {
+              _Pair(:final left, :final right) => Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: buildField(left, true)),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: right == null
+                          ? const SizedBox.shrink()
+                          : buildField(right, true),
+                    ),
+                  ],
+                ),
+              _Full(:final field) => buildField(field, true),
+            },
+          ),
+      ],
     );
   }
 }
@@ -239,17 +522,28 @@ class FieldWidget extends StatelessWidget {
   /// when the field is required. Using `label:` (a `Widget`) instead of
   /// `labelText:` lets us inline the marker without giving up Material's
   /// native floating-label behaviour.
+  ///
+  /// Inside a child-table data cell (detected via [ChildTableContext]),
+  /// the external label is dropped and the field name becomes
+  /// `hintText` instead — the column header already carries the label,
+  /// and Material's floating label otherwise eats so much horizontal
+  /// space that narrow cells collapse to per-character columns. Mirrors
+  /// Swift PR #121's `mercantisInput()` `.labelsHidden()` fix.
   InputDecoration _decoration(
     BuildContext context, {
     String? hintText,
     Widget? suffixIcon,
     String? suffixText,
   }) {
+    final inline = ChildTableContext.isInline(context);
     return InputDecoration(
-      label: _RequiredAwareLabel(label: _label, required: field.required),
-      hintText: hintText,
+      label: inline
+          ? null
+          : _RequiredAwareLabel(label: _label, required: field.required),
+      hintText: hintText ?? (inline ? _label : null),
       suffixIcon: suffixIcon,
       suffixText: suffixText,
+      isDense: inline,
     );
   }
 
@@ -463,11 +757,16 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final inline = ChildTableContext.isInline(context);
     return TextFormField(
       key: ValueKey('date_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
-        label: _RequiredAwareLabel(label: label, required: required),
+        label: inline
+            ? null
+            : _RequiredAwareLabel(label: label, required: required),
+        hintText: inline ? label : null,
+        isDense: inline,
         suffixIcon: readOnly
             ? null
             : IconButton(
