@@ -13,22 +13,20 @@ import '../sync_engine/sync_engine.dart';
 import '../sync_engine/mutation_record.dart';
 import '../notifications/event_emitter.dart';
 import 'document.dart';
+import 'document_engine_error.dart';
 import 'document_version.dart';
 import 'validation_pipeline.dart';
 
-class ConcurrencyConflictError implements Exception {
-  final String message;
-  const ConcurrencyConflictError(this.message);
-  @override
-  String toString() => 'ConcurrencyConflictError: $message';
-}
+export 'document_engine_error.dart';
 
-class ValidationException implements Exception {
-  final List<ValidationError> errors;
-  const ValidationException(this.errors);
-  @override
-  String toString() => 'ValidationException: ${errors.map((e) => e.toString()).join(', ')}';
-}
+/// Back-compat alias preserved for call sites that caught the old typed
+/// concurrency exception by name; new code should match on
+/// [DocumentEngineError] instead.
+typedef ConcurrencyConflictError = DocumentEngineError;
+
+/// Back-compat alias for the legacy validation throw shape. See
+/// [DocumentEngineError.validationFailed] for the structured form.
+typedef ValidationException = DocumentEngineError;
 
 class DocumentEngine {
   final Database _db;
@@ -70,12 +68,18 @@ class DocumentEngine {
 
   Future<Document> save(Document doc, Set<String> userRoles) async {
     final docType = await _registry.get(doc.docType);
-    if (docType == null) throw Exception('DocType not found: ${doc.docType}');
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(doc.docType);
+    }
 
     // Enforce submit immutability
     if (doc.docStatus == 1) {
       // Only allowOnSubmit fields can be changed. Handled by caller.
-      throw Exception('Cannot edit a Submitted document directly. Use amend().');
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: 1,
+        to: 1,
+        id: doc.id.isEmpty ? '<new>' : doc.id,
+      );
     }
 
     final op =
@@ -83,7 +87,10 @@ class DocumentEngine {
 
     if (!_permissionEngine.canPerform(
         operation: op, on: docType, userRoles: userRoles)) {
-      throw Exception('Permission denied: $op on ${doc.docType}');
+      throw DocumentEngineError.permissionDenied(
+        operation: op.name,
+        docType: doc.docType,
+      );
     }
 
     // Optimistic concurrency check
@@ -93,8 +100,7 @@ class DocumentEngine {
           existing.modifiedAt != null &&
           doc.modifiedAt != null) {
         if (existing.modifiedAt!.isAfter(doc.modifiedAt!)) {
-          throw const ConcurrencyConflictError(
-              'Document was modified by another operation. Reload and try again.');
+          throw DocumentEngineError.concurrencyConflict(doc.id);
         }
       }
     }
@@ -110,7 +116,9 @@ class DocumentEngine {
 
     // Run validation pipeline
     final result = await _pipeline.run(doc, docType, _db, op, userRoles);
-    if (!result.isValid) throw ValidationException(result.errors);
+    if (!result.isValid) {
+      throw DocumentEngineError.validationFailed(result.errors);
+    }
 
     // Compute diff for versioning (store in audit_log)
     Document? previousVersion;
@@ -181,23 +189,32 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
 
-    _emitter.publish(
-        DocumentSavedEvent(document: doc, docType: doc.docType, userId: userId));
+    _emitter.publish(DocumentSavedEvent(
+        document: doc, docType: doc.docType, userId: userId));
     return doc;
   }
 
-  Future<void> delete(
-      String docType, String id, Set<String> userRoles) async {
+  Future<void> delete(String docType, String id, Set<String> userRoles) async {
     final dt = await _registry.get(docType);
-    if (dt == null) throw Exception('DocType not found: $docType');
+    if (dt == null) throw DocumentEngineError.docTypeNotFound(docType);
     if (!_permissionEngine.canPerform(
         operation: DocumentOperation.delete, on: dt, userRoles: userRoles)) {
-      throw Exception('Permission denied: delete on $docType');
+      throw DocumentEngineError.permissionDenied(
+        operation: 'delete',
+        docType: docType,
+      );
+    }
+    // Mirror Swift: a Submitted document can't be deleted directly — the
+    // caller must cancel first. We probe the existing row so the error
+    // carries the right id for the human message.
+    final existing = await _fetchRaw(docType, id);
+    if (existing != null && existing.docStatus == 1) {
+      throw DocumentEngineError.cannotDeleteSubmitted(id);
     }
     await _db.delete('documents',
         where: 'id = ? AND doctype = ?', whereArgs: [id, docType]);
-    await _db.delete('document_children',
-        where: 'parent_id = ?', whereArgs: [id]);
+    await _db
+        .delete('document_children', where: 'parent_id = ?', whereArgs: [id]);
     await _syncEngine.appendMutation(MutationRecord(
       id: _uuid.v4(),
       type: MutationType.deleteDocument,
@@ -213,8 +230,7 @@ class DocumentEngine {
         DocumentDeletedEvent(documentId: id, docType: docType, userId: userId));
   }
 
-  Future<Document?> fetch(String docType, String id) =>
-      _fetchRaw(docType, id);
+  Future<Document?> fetch(String docType, String id) => _fetchRaw(docType, id);
 
   Future<Document?> _fetchRaw(String docType, String id) async {
     final rows = await _db.query(
@@ -248,8 +264,7 @@ class DocumentEngine {
 
     if (filters != null) {
       for (final entry in filters.entries) {
-        query +=
-            " AND json_extract(payload, '\$.${entry.key}') = ?";
+        query += " AND json_extract(payload, '\$.${entry.key}') = ?";
         args.add(entry.value);
       }
     }
@@ -291,16 +306,27 @@ class DocumentEngine {
 
   Future<Document> submit(Document doc, Set<String> userRoles) async {
     final docType = await _registry.get(doc.docType);
-    if (docType == null) throw Exception('DocType not found: ${doc.docType}');
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(doc.docType);
+    }
     if (!docType.isSubmittable) {
-      throw Exception('DocType ${doc.docType} is not submittable');
+      throw DocumentEngineError.notSubmittable(doc.docType);
     }
     if (doc.docStatus != 0) {
-      throw Exception('Only Draft (docStatus=0) documents can be submitted');
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: doc.docStatus,
+        to: 1,
+        id: doc.id,
+      );
     }
     if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.submit, on: docType, userRoles: userRoles)) {
-      throw Exception('Permission denied: submit on ${doc.docType}');
+        operation: DocumentOperation.submit,
+        on: docType,
+        userRoles: userRoles)) {
+      throw DocumentEngineError.permissionDenied(
+        operation: 'submit',
+        docType: doc.docType,
+      );
     }
 
     doc.docStatus = 1;
@@ -332,14 +358,24 @@ class DocumentEngine {
 
   Future<Document> cancel(Document doc, Set<String> userRoles) async {
     final docType = await _registry.get(doc.docType);
-    if (docType == null) throw Exception('DocType not found: ${doc.docType}');
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(doc.docType);
+    }
     if (doc.docStatus != 1) {
-      throw Exception(
-          'Only Submitted (docStatus=1) documents can be cancelled');
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: doc.docStatus,
+        to: 2,
+        id: doc.id,
+      );
     }
     if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.delete, on: docType, userRoles: userRoles)) {
-      throw Exception('Permission denied: cancel on ${doc.docType}');
+        operation: DocumentOperation.delete,
+        on: docType,
+        userRoles: userRoles)) {
+      throw DocumentEngineError.permissionDenied(
+        operation: 'cancel',
+        docType: doc.docType,
+      );
     }
 
     doc.docStatus = 2;
@@ -371,17 +407,24 @@ class DocumentEngine {
 
   Future<Document> amend(Document original, Set<String> userRoles) async {
     final docType = await _registry.get(original.docType);
-    if (docType == null)
-      throw Exception('DocType not found: ${original.docType}');
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(original.docType);
+    }
     if (original.docStatus != 2) {
-      throw Exception(
-          'Only Cancelled (docStatus=2) documents can be amended');
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: original.docStatus,
+        to: 0,
+        id: original.id,
+      );
     }
     if (!_permissionEngine.canPerform(
         operation: DocumentOperation.amend,
         on: docType,
         userRoles: userRoles)) {
-      throw Exception('Permission denied: amend on ${original.docType}');
+      throw DocumentEngineError.permissionDenied(
+        operation: 'amend',
+        docType: original.docType,
+      );
     }
 
     final amended = Document(

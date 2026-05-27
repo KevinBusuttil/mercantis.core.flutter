@@ -53,7 +53,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       setState(() => _changes.clear());
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() =>
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -68,7 +69,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       await engine.submit(current, _userRoles);
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() =>
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -79,8 +81,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     final fetchAsync =
         ref.watch(_fetchDocProvider((widget.docTypeName, widget.documentName)));
     final engineAsync = ref.watch(documentEngineProvider);
-    final metaAsync =
-        ref.watch(resolvedMetaProvider(widget.docTypeName));
+    final metaAsync = ref.watch(resolvedMetaProvider(widget.docTypeName));
 
     return fetchAsync.when(
       loading: () =>
@@ -108,16 +109,14 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             onSubmit: () => _submit(engine, doc),
             error: _error,
             child: metaAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (meta) => meta != null
                   ? _MetaForm(
                       doc: doc,
                       meta: meta,
                       readOnly: docStatus != 0,
-                      onChanged: (k, v) =>
-                          setState(() => _changes[k] = v),
+                      onChanged: (k, v) => setState(() => _changes[k] = v),
                     )
                   : _RawForm(doc: doc),
             ),
@@ -259,8 +258,7 @@ class FieldWidget extends StatelessWidget {
             context,
             suffixText: field.type == FieldType.percent ? '%' : null,
           ),
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           readOnly: readOnly,
           onChanged: (v) => onChanged(double.tryParse(v)),
         );
