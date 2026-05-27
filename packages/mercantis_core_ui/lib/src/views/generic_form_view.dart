@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../providers/core_providers.dart';
+import '../widgets/link_picker_field.dart';
 import 'record_workspace_chrome.dart';
 
 const _userRoles = <String>{'System Manager'};
@@ -20,9 +21,19 @@ class GenericFormView extends ConsumerStatefulWidget {
     super.key,
     required this.docTypeName,
     required this.documentName,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final String docTypeName;
   final String? documentName;
+
+  /// Optional caller-supplied link picker search provider, forwarded
+  /// to every link [FieldWidget]. Mirrors Swift PR #113.
+  final LinkSearchProvider? linkSearchProvider;
+
+  /// Optional resolver for a link target's [DocType] — used by the
+  /// link picker to prefer the registry's title field.
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   @override
   ConsumerState<GenericFormView> createState() => _GenericFormViewState();
@@ -53,7 +64,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       setState(() => _changes.clear());
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() =>
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -68,7 +80,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       await engine.submit(current, _userRoles);
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() =>
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -79,8 +92,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     final fetchAsync =
         ref.watch(_fetchDocProvider((widget.docTypeName, widget.documentName)));
     final engineAsync = ref.watch(documentEngineProvider);
-    final metaAsync =
-        ref.watch(resolvedMetaProvider(widget.docTypeName));
+    final metaAsync = ref.watch(resolvedMetaProvider(widget.docTypeName));
 
     return fetchAsync.when(
       loading: () =>
@@ -108,16 +120,16 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             onSubmit: () => _submit(engine, doc),
             error: _error,
             child: metaAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (meta) => meta != null
                   ? _MetaForm(
                       doc: doc,
                       meta: meta,
                       readOnly: docStatus != 0,
-                      onChanged: (k, v) =>
-                          setState(() => _changes[k] = v),
+                      onChanged: (k, v) => setState(() => _changes[k] = v),
+                      linkSearchProvider: widget.linkSearchProvider,
+                      childDocTypeProvider: widget.childDocTypeProvider,
                     )
                   : _RawForm(doc: doc),
             ),
@@ -134,11 +146,15 @@ class _MetaForm extends StatelessWidget {
     required this.meta,
     required this.readOnly,
     required this.onChanged,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final Document doc;
   final ResolvedMeta meta;
   final bool readOnly;
   final void Function(String key, dynamic value) onChanged;
+  final LinkSearchProvider? linkSearchProvider;
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +172,8 @@ class _MetaForm extends StatelessWidget {
                 value: doc[f.key],
                 readOnly: readOnly,
                 onChanged: (v) => onChanged(f.key, v),
+                linkSearchProvider: linkSearchProvider,
+                childDocTypeProvider: childDocTypeProvider,
               ),
             ),
         ],
@@ -196,11 +214,24 @@ class FieldWidget extends StatelessWidget {
     required this.value,
     required this.readOnly,
     required this.onChanged,
+    this.linkSearchProvider,
+    this.childDocTypeProvider,
   });
   final ResolvedFieldDefinition field;
   final dynamic value;
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
+
+  /// Optional callback used by the link picker sheet to resolve
+  /// search results. When `null` the picker falls back to a client-side
+  /// scan via `documentEngineProvider`.
+  final LinkSearchProvider? linkSearchProvider;
+
+  /// Optional resolver for the target [DocType] of a link / child-table
+  /// field. The picker uses it to prefer the registry's title field
+  /// over the built-in key heuristic; supplied as part of the
+  /// provider-forwarding contract from Swift PR #113.
+  final DocType? Function(String docTypeId)? childDocTypeProvider;
 
   String get _label => field.label;
 
@@ -259,8 +290,7 @@ class FieldWidget extends StatelessWidget {
             context,
             suffixText: field.type == FieldType.percent ? '%' : null,
           ),
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           readOnly: readOnly,
           onChanged: (v) => onChanged(double.tryParse(v)),
         );
@@ -286,14 +316,14 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.link:
-        return _TextFieldEditor(
-          value: value as String? ?? '',
-          decoration: _decoration(
-            context,
-            hintText: 'Link to ${field.options ?? ""}',
-            suffixIcon: const Icon(Icons.link),
-          ),
+        return LinkPickerField(
+          label: _label,
+          targetDocType: field.linkDocType ?? field.options ?? '',
+          value: value as String?,
+          required: field.required,
           readOnly: readOnly,
+          searchProvider: linkSearchProvider,
+          targetDocTypeResolver: childDocTypeProvider,
           onChanged: onChanged,
         );
       case FieldType.heading:

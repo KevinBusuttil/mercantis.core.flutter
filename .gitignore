@@ -16,3 +16,4 @@ ios/.symlinks/
 ios/Pods/
 ios/Flutter/flutter_export_environment.sh
 coverage/
+pubspec.lock
