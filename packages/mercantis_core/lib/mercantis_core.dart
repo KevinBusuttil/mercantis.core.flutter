@@ -65,3 +65,10 @@ export 'src/scheduling/scheduler_service.dart';
 // Customization
 export 'src/customization/custom_field.dart';
 export 'src/customization/property_setter.dart';
+
+// Reporting / Dashboards
+export 'src/reporting/report_value_formatter.dart';
+export 'src/reporting/report_result.dart';
+export 'src/reporting/report_engine.dart';
+export 'src/reporting/dashboard_result.dart';
+export 'src/reporting/dashboard_engine.dart';
