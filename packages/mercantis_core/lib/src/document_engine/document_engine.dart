@@ -194,6 +194,109 @@ class DocumentEngine {
     return doc;
   }
 
+  /// Applies field changes to an already-submitted (docStatus == 1) document,
+  /// permitting ONLY fields declared `allowOnSubmit: true`. This is the
+  /// sanctioned escape hatch from submit immutability — used by the ledger
+  /// spine to keep an invoice's `outstanding_amount` current as payments settle
+  /// it, which [save] forbids (it rejects any write to a submitted doc).
+  ///
+  /// Any attempt to change a field that is not `allowOnSubmit` throws
+  /// [DocumentEngineError.fieldImmutableAfterSubmit]. Emits a
+  /// [DocumentSavedEvent] (not Submitted/Cancelled), so it never re-triggers
+  /// derivation.
+  Future<Document> applyOnSubmitUpdate(
+      Document doc, Set<String> userRoles) async {
+    final docType = await _registry.get(doc.docType);
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(doc.docType);
+    }
+    if (doc.docStatus != 1) {
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: doc.docStatus,
+        to: 1,
+        id: doc.id.isEmpty ? '<new>' : doc.id,
+      );
+    }
+    if (!_permissionEngine.canPerform(
+        operation: DocumentOperation.write,
+        on: docType,
+        userRoles: userRoles)) {
+      throw DocumentEngineError.permissionDenied(
+        operation: 'write',
+        docType: doc.docType,
+      );
+    }
+
+    final existing = await _fetchRaw(doc.docType, doc.id);
+    if (existing == null) {
+      // The row vanished (or was never submitted) between read and write.
+      throw DocumentEngineError.concurrencyConflict(doc.id);
+    }
+
+    // Permit only allowOnSubmit fields to differ from the stored row.
+    final byKey = {for (final f in docType.fields) f.key: f};
+    final keys = {...existing.payload.keys, ...doc.payload.keys};
+    for (final key in keys) {
+      if (jsonEncode(existing.payload[key]) == jsonEncode(doc.payload[key])) {
+        continue;
+      }
+      final field = byKey[key];
+      if (field == null || !field.allowOnSubmit) {
+        throw DocumentEngineError.fieldImmutableAfterSubmit(
+          fieldKey: key,
+          docType: doc.docType,
+        );
+      }
+    }
+
+    // Optimistic concurrency.
+    if (existing.modifiedAt != null &&
+        doc.modifiedAt != null &&
+        existing.modifiedAt!.isAfter(doc.modifiedAt!)) {
+      throw DocumentEngineError.concurrencyConflict(doc.id);
+    }
+
+    doc.docStatus = 1;
+    doc.modifiedAt = DateTime.now();
+    doc.syncState = SyncState.local;
+    await _db.update(
+      'documents',
+      {
+        'payload': jsonEncode(doc.payload),
+        'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
+        'sync_state': doc.syncState.name,
+      },
+      where: 'id = ?',
+      whereArgs: [doc.id],
+    );
+
+    final diffs = DocumentVersion.computeDiff(existing.payload, doc.payload);
+    await _db.insert('audit_log', {
+      'id': _uuid.v4(),
+      'document_id': doc.id,
+      'doctype': doc.docType,
+      'action': 'updated',
+      'user_id': userId,
+      'device_id': deviceId,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'payload': jsonEncode({'diffs': diffs.map((d) => d.toJson()).toList()}),
+    });
+    await _syncEngine.appendMutation(MutationRecord(
+      id: _uuid.v4(),
+      type: MutationType.updateDocument,
+      docType: doc.docType,
+      documentId: doc.id,
+      payload: doc.toDbRow(),
+      deviceId: deviceId,
+      userId: userId,
+      localTimestamp: DateTime.now(),
+      status: MutationStatus.pending,
+    ));
+    _emitter.publish(DocumentSavedEvent(
+        document: doc, docType: doc.docType, userId: userId));
+    return doc;
+  }
+
   Future<void> delete(String docType, String id, Set<String> userRoles) async {
     final dt = await _registry.get(docType);
     if (dt == null) throw DocumentEngineError.docTypeNotFound(docType);
