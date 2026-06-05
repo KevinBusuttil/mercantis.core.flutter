@@ -53,7 +53,13 @@ class WorkspaceVisibilityFilter {
           ));
         }
       }
-      if (keptSections.isEmpty && w.dashboardCards.isEmpty && w.quickActions.isEmpty) {
+      // Drop a workspace only when the user has lost access to all of its
+      // content — it declared sections but every one was filtered out by
+      // permissions — and it has no cards or quick-actions to fall back on. A
+      // workspace that simply declares no sections (a landing/dashboard space)
+      // stays visible.
+      final lostAllSections = w.sections.isNotEmpty && keptSections.isEmpty;
+      if (lostAllSections && w.dashboardCards.isEmpty && w.quickActions.isEmpty) {
         continue;
       }
       visible.add(WorkspaceDescriptor(
