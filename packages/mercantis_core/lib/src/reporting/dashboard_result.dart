@@ -1,8 +1,8 @@
 import 'report_result.dart';
 
-/// Resolved output of one [DashboardWidget]. Exactly one of [count], [rows],
-/// [route], or [chart] is populated for a successful widget; [error] is set
-/// instead when that widget failed to resolve (per-widget isolation, so one
+/// Resolved output of one [DashboardWidget]. Exactly one of [count], [total],
+/// [rows], [route], or [chart] is populated for a successful widget; [error] is
+/// set instead when that widget failed to resolve (per-widget isolation, so one
 /// bad tile never blanks the whole dashboard). Mirrors the Swift
 /// `DashboardWidgetResult`.
 class DashboardWidgetResult {
@@ -11,6 +11,14 @@ class DashboardWidgetResult {
   final String label;
 
   final int? count;
+
+  /// Aggregated numeric value for a `sum` widget (raw, unformatted).
+  final num? total;
+
+  /// Display string for [total], pre-formatted with the widget's `valueType`
+  /// (e.g. currency), so the UI can render it without its own formatter.
+  final String? display;
+
   final List<Map<String, String?>>? rows;
   final String? route;
   final ReportResult? chart;
@@ -21,6 +29,8 @@ class DashboardWidgetResult {
     required this.type,
     required this.label,
     this.count,
+    this.total,
+    this.display,
     this.rows,
     this.route,
     this.chart,
@@ -33,6 +43,8 @@ class DashboardWidgetResult {
     required this.label,
     required String this.error,
   })  : count = null,
+        total = null,
+        display = null,
         rows = null,
         route = null,
         chart = null;

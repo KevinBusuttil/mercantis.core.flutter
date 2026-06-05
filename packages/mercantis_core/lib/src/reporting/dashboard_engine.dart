@@ -5,11 +5,12 @@ import 'report_value_formatter.dart';
 
 /// Resolves [DashboardDefinition]s into typed [DashboardResult]s by executing
 /// each widget against the document store / report engine. Mirrors the Swift
-/// `DashboardEngine` (ADR-045): four widget kinds, each isolated so a single
+/// `DashboardEngine` (ADR-045): five widget kinds, each isolated so a single
 /// failing tile surfaces an error instead of breaking the whole dashboard.
 ///
 /// Widget `config` contract (read from [DashboardWidget.config]):
 /// * `count`    — `{ docType, filters?, whereExpression? }`
+/// * `sum`      — `{ docType, field, valueType?, filters?, whereExpression? }`
 /// * `list`     — `{ docType, columns: [fieldKey...], limit?, filters?, sortBy? }`
 /// * `shortcut` — `{ route }`
 /// * `chart`    — `{ reportId, filters? }`
@@ -73,6 +74,8 @@ class DashboardEngine {
       switch (widget.type) {
         case 'count':
           return await _count(widget, userRoles);
+        case 'sum':
+          return await _sum(widget, userRoles);
         case 'list':
           return await _listWidget(widget, userRoles);
         case 'shortcut':
@@ -113,6 +116,41 @@ class DashboardEngine {
       type: widget.type,
       label: widget.label,
       count: docs.length,
+    );
+  }
+
+  /// Sums a numeric [field] over the filtered documents. Non-numeric / null
+  /// cells contribute nothing; numeric strings are parsed. The raw total and a
+  /// pre-formatted display string (per `valueType`, default currency) are
+  /// returned so monetary KPIs read from real data.
+  Future<DashboardWidgetResult> _sum(
+    DashboardWidget widget,
+    Set<String>? userRoles,
+  ) async {
+    final docType = _requireString(widget, 'docType');
+    final field = _requireString(widget, 'field');
+    final docs = await _list(
+      docType,
+      filters: _filters(widget),
+      whereExpression: widget.config['whereExpression'] as String?,
+      userRoles: userRoles,
+    );
+    num total = 0;
+    for (final doc in docs) {
+      final raw = doc.payload[field];
+      if (raw is num) {
+        total += raw;
+      } else if (raw is String) {
+        total += num.tryParse(raw) ?? 0;
+      }
+    }
+    final valueType = widget.config['valueType'] as String? ?? 'currency';
+    return DashboardWidgetResult(
+      id: widget.id,
+      type: widget.type,
+      label: widget.label,
+      total: total,
+      display: _formatter.format(total, type: valueType),
     );
   }
 

@@ -40,6 +40,7 @@ class DocumentEngine {
   final EventEmitter _emitter;
   final String deviceId;
   final String userId;
+  final List<DocumentInterceptor> _interceptors;
   final ValidationPipeline _pipeline = ValidationPipeline();
 
   static const _uuid = Uuid();
@@ -56,6 +57,7 @@ class DocumentEngine {
     required EventEmitter emitter,
     required this.deviceId,
     required this.userId,
+    List<DocumentInterceptor> interceptors = const [],
   })  : _db = database,
         _registry = registry,
         _metaComposer = metaComposer,
@@ -64,7 +66,8 @@ class DocumentEngine {
         _expressionEvaluator = expressionEvaluator,
         _namingService = namingService,
         _syncEngine = syncEngine,
-        _emitter = emitter;
+        _emitter = emitter,
+        _interceptors = interceptors;
 
   Future<Document> save(Document doc, Set<String> userRoles) async {
     final docType = await _registry.get(doc.docType);
@@ -91,6 +94,14 @@ class DocumentEngine {
         operation: op.name,
         docType: doc.docType,
       );
+    }
+
+    // Pre-save hooks: apply defaults / enforce rules before validation. Run
+    // before id assignment so defaults can satisfy required fields. May mutate
+    // doc or throw to abort.
+    final isNew = doc.id.isEmpty;
+    for (final interceptor in _interceptors) {
+      await interceptor.beforeSave(this, doc, docType, isNew: isNew);
     }
 
     // Optimistic concurrency check
@@ -189,6 +200,109 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
 
+    _emitter.publish(DocumentSavedEvent(
+        document: doc, docType: doc.docType, userId: userId));
+    return doc;
+  }
+
+  /// Applies field changes to an already-submitted (docStatus == 1) document,
+  /// permitting ONLY fields declared `allowOnSubmit: true`. This is the
+  /// sanctioned escape hatch from submit immutability — used by the ledger
+  /// spine to keep an invoice's `outstanding_amount` current as payments settle
+  /// it, which [save] forbids (it rejects any write to a submitted doc).
+  ///
+  /// Any attempt to change a field that is not `allowOnSubmit` throws
+  /// [DocumentEngineError.fieldImmutableAfterSubmit]. Emits a
+  /// [DocumentSavedEvent] (not Submitted/Cancelled), so it never re-triggers
+  /// derivation.
+  Future<Document> applyOnSubmitUpdate(
+      Document doc, Set<String> userRoles) async {
+    final docType = await _registry.get(doc.docType);
+    if (docType == null) {
+      throw DocumentEngineError.docTypeNotFound(doc.docType);
+    }
+    if (doc.docStatus != 1) {
+      throw DocumentEngineError.invalidDocStatusTransition(
+        from: doc.docStatus,
+        to: 1,
+        id: doc.id.isEmpty ? '<new>' : doc.id,
+      );
+    }
+    if (!_permissionEngine.canPerform(
+        operation: DocumentOperation.write,
+        on: docType,
+        userRoles: userRoles)) {
+      throw DocumentEngineError.permissionDenied(
+        operation: 'write',
+        docType: doc.docType,
+      );
+    }
+
+    final existing = await _fetchRaw(doc.docType, doc.id);
+    if (existing == null) {
+      // The row vanished (or was never submitted) between read and write.
+      throw DocumentEngineError.concurrencyConflict(doc.id);
+    }
+
+    // Permit only allowOnSubmit fields to differ from the stored row.
+    final byKey = {for (final f in docType.fields) f.key: f};
+    final keys = {...existing.payload.keys, ...doc.payload.keys};
+    for (final key in keys) {
+      if (jsonEncode(existing.payload[key]) == jsonEncode(doc.payload[key])) {
+        continue;
+      }
+      final field = byKey[key];
+      if (field == null || !field.allowOnSubmit) {
+        throw DocumentEngineError.fieldImmutableAfterSubmit(
+          fieldKey: key,
+          docType: doc.docType,
+        );
+      }
+    }
+
+    // Optimistic concurrency.
+    if (existing.modifiedAt != null &&
+        doc.modifiedAt != null &&
+        existing.modifiedAt!.isAfter(doc.modifiedAt!)) {
+      throw DocumentEngineError.concurrencyConflict(doc.id);
+    }
+
+    doc.docStatus = 1;
+    doc.modifiedAt = DateTime.now();
+    doc.syncState = SyncState.local;
+    await _db.update(
+      'documents',
+      {
+        'payload': jsonEncode(doc.payload),
+        'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
+        'sync_state': doc.syncState.name,
+      },
+      where: 'id = ?',
+      whereArgs: [doc.id],
+    );
+
+    final diffs = DocumentVersion.computeDiff(existing.payload, doc.payload);
+    await _db.insert('audit_log', {
+      'id': _uuid.v4(),
+      'document_id': doc.id,
+      'doctype': doc.docType,
+      'action': 'updated',
+      'user_id': userId,
+      'device_id': deviceId,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'payload': jsonEncode({'diffs': diffs.map((d) => d.toJson()).toList()}),
+    });
+    await _syncEngine.appendMutation(MutationRecord(
+      id: _uuid.v4(),
+      type: MutationType.updateDocument,
+      docType: doc.docType,
+      documentId: doc.id,
+      payload: doc.toDbRow(),
+      deviceId: deviceId,
+      userId: userId,
+      localTimestamp: DateTime.now(),
+      status: MutationStatus.pending,
+    ));
     _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: userId));
     return doc;
@@ -329,6 +443,12 @@ class DocumentEngine {
       );
     }
 
+    // Pre-submit hooks: enforce posting-time rules (e.g. open fiscal year).
+    // May throw a DocumentEngineError to block the submission.
+    for (final interceptor in _interceptors) {
+      await interceptor.beforeSubmit(this, doc, docType);
+    }
+
     doc.docStatus = 1;
     doc.modifiedAt = DateTime.now();
     await _db.update(
@@ -437,4 +557,40 @@ class DocumentEngine {
     );
     return save(amended, userRoles);
   }
+}
+
+/// A hook into the document lifecycle, run by [DocumentEngine] before a write is
+/// committed. Apps register interceptors (via the `interceptors:` constructor
+/// argument) to apply field defaults or enforce cross-document posting rules
+/// without forking the engine — the seam the Swift app had as explicit save
+/// stages.
+///
+/// [beforeSave] runs inside [DocumentEngine.save], before id assignment and
+/// validation, so an implementation may fill defaults that then satisfy
+/// required-field checks. [beforeSubmit] runs inside [DocumentEngine.submit],
+/// just before the status flips to 1. Either method may throw a
+/// [DocumentEngineError] to abort the operation.
+///
+/// The owning [engine] is passed so a hook can read other documents (e.g. the
+/// Company or the open Fiscal Year). Do not call back into save/submit for the
+/// document being processed — that re-enters the same lifecycle.
+abstract class DocumentInterceptor {
+  const DocumentInterceptor();
+
+  /// Invoked before a draft is persisted. [isNew] is true on create (no id yet).
+  /// Mutating [doc] here (e.g. filling blank defaults) is the intended use.
+  Future<void> beforeSave(
+    DocumentEngine engine,
+    Document doc,
+    DocType docType, {
+    required bool isNew,
+  }) async {}
+
+  /// Invoked before a document transitions to submitted (docStatus 1). Intended
+  /// for posting-time validation; throw to block the submission.
+  Future<void> beforeSubmit(
+    DocumentEngine engine,
+    Document doc,
+    DocType docType,
+  ) async {}
 }

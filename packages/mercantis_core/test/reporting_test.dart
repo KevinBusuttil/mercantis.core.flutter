@@ -186,5 +186,30 @@ void main() {
       expect(byId['broken']!.isError, isTrue);
       expect(byId['broken']!.error, contains('docType'));
     });
+
+    test('sum widget totals a numeric field and formats the display', () async {
+      final engine = DashboardEngine(
+        listerReturning([
+          doc('A', payload: {'grand_total': 1000}),
+          doc('B', payload: {'grand_total': 234.5}),
+          doc('C', payload: {'grand_total': '15.50'}), // numeric string
+          doc('D', payload: {'grand_total': null}), // ignored
+        ]),
+        ReportEngine(listerReturning([])),
+      )..register(const DashboardDefinition(
+          id: 'finance',
+          name: 'Finance',
+          widgets: [
+            DashboardWidget(id: 'receivables', type: 'sum', label: 'Receivables', config: {
+              'docType': 'Sales Invoice',
+              'field': 'grand_total',
+            }),
+          ],
+        ));
+
+      final w = (await engine.resolve('finance')).widgets.single;
+      expect(w.total, 1250.0);
+      expect(w.display, '1,250.00'); // currency by default
+    });
   });
 }

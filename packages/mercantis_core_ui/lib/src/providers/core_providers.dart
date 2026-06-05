@@ -67,6 +67,13 @@ final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
   return SyncEngine(database: db.db, registry: registry);
 });
 
+/// Lifecycle hooks injected into the [DocumentEngine] (defaults, posting-time
+/// validation). Empty by default; apps override this to register their own
+/// [DocumentInterceptor]s (e.g. the Hub's business-profile defaults and
+/// fiscal-year guard).
+final documentInterceptorsProvider =
+    Provider<List<DocumentInterceptor>>((_) => const []);
+
 final documentEngineProvider = FutureProvider<DocumentEngine>((ref) async {
   final db = await ref.watch(mercantisDatabaseProvider.future);
   final registry = await ref.watch(metadataRegistryProvider.future);
@@ -89,6 +96,7 @@ final documentEngineProvider = FutureProvider<DocumentEngine>((ref) async {
     emitter: emitter,
     deviceId: 'local-device',
     userId: 'local-user',
+    interceptors: ref.watch(documentInterceptorsProvider),
   );
 });
 
