@@ -5,6 +5,7 @@ class PermissionContext {
     this.roles = const [],
     this.userId,
     this.docTypePermissions = const {},
+    this.unrestricted = false,
   });
 
   final List<String> roles;
@@ -13,18 +14,25 @@ class PermissionContext {
   /// Map of docTypeId -> set of granted operations ('read','write','create',...).
   final Map<String, Set<String>> docTypePermissions;
 
+  /// When true, every role/permission gate is bypassed — the "see everything"
+  /// context (e.g. an unauthenticated preview or a super-user). Distinct from a
+  /// context with no roles, which is still subject to role gating.
+  final bool unrestricted;
+
   bool hasAnyRole(List<String> required) {
+    if (unrestricted) return true;
     if (required.isEmpty) return true;
     return required.any(roles.contains);
   }
 
   bool canRead(String docType) {
+    if (unrestricted) return true;
     final ops = docTypePermissions[docType];
     if (ops == null) return true;
     return ops.contains('read');
   }
 
-  static const PermissionContext open = PermissionContext();
+  static const PermissionContext open = PermissionContext(unrestricted: true);
 }
 
 class WorkspaceVisibilityFilter {

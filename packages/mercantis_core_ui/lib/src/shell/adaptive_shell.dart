@@ -255,29 +255,35 @@ class _SearchButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: MercantisSpacing.sm, vertical: 12),
-      child: InkWell(
-        borderRadius: MercantisRadius.rMd,
-        onTap: () => showGlobalSearch(context),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: MercantisRadius.rMd,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.search, size: 16),
-              if (extended) ...[
-                const SizedBox(width: 6),
-                Text('Search', style: theme.textTheme.labelMedium),
-                const Spacer(),
-                Text('⌘K', style: theme.textTheme.labelSmall),
+    // Fixed width (matching the rail) so the extended layout's Spacer has a
+    // bounded width even while the rail is measured under unbounded-width
+    // intrinsic sizing. Mirrors [_Brand].
+    return SizedBox(
+      width: extended ? 220 : 72,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: MercantisSpacing.sm, vertical: 12),
+        child: InkWell(
+          borderRadius: MercantisRadius.rMd,
+          onTap: () => showGlobalSearch(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: MercantisRadius.rMd,
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Row(
+              mainAxisSize: extended ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                const Icon(Icons.search, size: 16),
+                if (extended) ...[
+                  const SizedBox(width: 6),
+                  Text('Search', style: theme.textTheme.labelMedium),
+                  const Spacer(),
+                  Text('⌘K', style: theme.textTheme.labelSmall),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
