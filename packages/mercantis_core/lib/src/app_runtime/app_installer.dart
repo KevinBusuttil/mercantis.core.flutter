@@ -26,6 +26,32 @@ class AppInstaller {
         _syncEngine = syncEngine;
 
   Future<void> install(AppManifest manifest) async {
+    await _registerMetadata(manifest);
+
+    // Append sync mutation
+    await _syncEngine?.appendMutation(MutationRecord(
+      id: _uuid.v4(),
+      type: MutationType.installApp,
+      docType: 'App',
+      documentId: manifest.id,
+      payload: {'appId': manifest.id, 'version': manifest.version},
+      deviceId: 'installer',
+      userId: 'system',
+      localTimestamp: DateTime.now(),
+      status: MutationStatus.pending,
+    ));
+  }
+
+  /// Re-registers an already-installed app's DocTypes and workflows from the
+  /// (bundled) manifest, keeping the local schema in sync with a manifest that
+  /// changed since first install — e.g. new child-table DocTypes added in a
+  /// later app build. Idempotent (registrations replace) and does NOT re-emit
+  /// the install mutation. Call this on boot when [isInstalled] is true.
+  Future<void> syncMetadata(AppManifest manifest) => _registerMetadata(manifest);
+
+  /// Validates the manifest and upserts its DocTypes, workflows, and the apps
+  /// row. Shared by [install] and [syncMetadata].
+  Future<void> _registerMetadata(AppManifest manifest) async {
     final errors = validate(manifest);
     if (errors.isNotEmpty) {
       throw Exception('Manifest validation failed: ${errors.map((e) => e.toString()).join(', ')}');
@@ -56,19 +82,6 @@ class AppInstaller {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-
-    // Append sync mutation
-    await _syncEngine?.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: MutationType.installApp,
-      docType: 'App',
-      documentId: manifest.id,
-      payload: {'appId': manifest.id, 'version': manifest.version},
-      deviceId: 'installer',
-      userId: 'system',
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
   }
 
   Future<void> uninstall(String appId) async {
