@@ -80,15 +80,34 @@ class GenericFormView extends ConsumerStatefulWidget {
 
 class _GenericFormViewState extends ConsumerState<GenericFormView> {
   final Map<String, dynamic> _changes = {};
+
+  /// Edits to child-table fields, keyed by field key. Tracked separately from
+  /// [_changes] because child rows live in [Document.children] (the
+  /// `document_children` table), not in the parent payload.
+  final Map<String, List<Map<String, dynamic>>> _childChanges = {};
   bool _isSaving = false;
   String? _error;
 
-  bool get _isDirty => _changes.isNotEmpty;
+  bool get _isDirty => _changes.isNotEmpty || _childChanges.isNotEmpty;
 
   Document _apply(Document base) {
-    if (_changes.isEmpty) return base;
+    if (_changes.isEmpty && _childChanges.isEmpty) return base;
     final payload = Map<String, dynamic>.from(base.payload)..addAll(_changes);
-    return base.copyWith(payload: payload);
+    final children = Map<String, List<ChildRow>>.from(base.children);
+    _childChanges.forEach((key, rows) {
+      children[key] = [
+        for (var i = 0; i < rows.length; i++)
+          ChildRow(
+            id: '',
+            parentId: base.id,
+            parentDocType: base.docType,
+            tableName: key,
+            rowIndex: i,
+            payload: Map<String, dynamic>.from(rows[i]),
+          ),
+      ];
+    });
+    return base.copyWith(payload: payload, children: children);
   }
 
   Document _emptyDoc() => Document(id: '', docType: widget.docTypeName);
@@ -100,7 +119,10 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     });
     try {
       await engine.save(current, _userRoles);
-      setState(() => _changes.clear());
+      setState(() {
+        _changes.clear();
+        _childChanges.clear();
+      });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
       setState(() =>
@@ -177,6 +199,8 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                       readOnly: docStatus != 0,
                       sectionColumns: widget.sectionColumns,
                       onChanged: (k, v) => setState(() => _changes[k] = v),
+                      onChildChanged: (k, rows) =>
+                          setState(() => _childChanges[k] = rows),
                       linkSearchProvider: widget.linkSearchProvider,
                       childDocTypeProvider: effectiveChildResolver,
                     )
@@ -225,6 +249,7 @@ class _MetaForm extends StatelessWidget {
     required this.meta,
     required this.readOnly,
     required this.onChanged,
+    required this.onChildChanged,
     this.sectionColumns,
     this.linkSearchProvider,
     this.childDocTypeProvider,
@@ -233,6 +258,10 @@ class _MetaForm extends StatelessWidget {
   final ResolvedMeta meta;
   final bool readOnly;
   final void Function(String key, dynamic value) onChanged;
+
+  /// Child-table edits (a full replacement row list for [key]).
+  final void Function(String key, List<Map<String, dynamic>> rows)
+      onChildChanged;
   final Map<String, int>? sectionColumns;
   final LinkSearchProvider? linkSearchProvider;
   final DocType? Function(String docTypeId)? childDocTypeProvider;
@@ -347,7 +376,7 @@ class _MetaForm extends StatelessWidget {
           childDocType: resolved,
           rows: rows,
           readOnly: readOnly || f.readOnly,
-          onChanged: (next) => onChanged(f.key, next),
+          onChanged: (next) => onChildChanged(f.key, next),
         ),
       );
     }
@@ -361,15 +390,13 @@ class _MetaForm extends StatelessWidget {
     );
   }
 
+  /// Child rows come from [Document.children] (the `document_children` table),
+  /// not the parent payload. In-flight edits are already merged here because
+  /// the form rebuilds `doc.children` via `_apply` before this widget renders.
   List<Map<String, dynamic>> _rowsFor(String key) {
-    final raw = doc[key];
-    if (raw is List) {
-      return raw
-          .whereType<Map>()
-          .map((m) => Map<String, dynamic>.from(m))
-          .toList();
-    }
-    return const [];
+    final rows = doc.children[key];
+    if (rows == null) return const [];
+    return [for (final r in rows) Map<String, dynamic>.from(r.payload)];
   }
 }
 
