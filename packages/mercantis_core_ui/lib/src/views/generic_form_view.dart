@@ -9,6 +9,40 @@ import 'record_workspace_chrome.dart';
 
 const _userRoles = <String>{'System Manager'};
 
+/// Reads a document's child rows for [fieldKey] as the plain map list the
+/// child-table grid edits. Child rows live in [Document.children] (the
+/// `document_children` table), not the parent payload — so the form must source
+/// them here, never from `doc[fieldKey]`.
+List<Map<String, dynamic>> childRowsAsMaps(Document doc, String fieldKey) {
+  final rows = doc.children[fieldKey];
+  if (rows == null) return const [];
+  return [for (final r in rows) Map<String, dynamic>.from(r.payload)];
+}
+
+/// Returns a copy of [base] with [childChanges] applied to [Document.children]
+/// — each entry is a full replacement row list for that field key, rebuilt as
+/// [ChildRow]s (with parent linkage + row index). Edits go to `children`, never
+/// payload, so they persist to `document_children` and flow into derivation.
+Document applyChildChanges(
+    Document base, Map<String, List<Map<String, dynamic>>> childChanges) {
+  if (childChanges.isEmpty) return base;
+  final children = Map<String, List<ChildRow>>.from(base.children);
+  childChanges.forEach((key, rows) {
+    children[key] = [
+      for (var i = 0; i < rows.length; i++)
+        ChildRow(
+          id: '',
+          parentId: base.id,
+          parentDocType: base.docType,
+          tableName: key,
+          rowIndex: i,
+          payload: Map<String, dynamic>.from(rows[i]),
+        ),
+    ];
+  });
+  return base.copyWith(children: children);
+}
+
 final _fetchDocProvider =
     FutureProvider.family<Document?, (String, String?)>((ref, args) async {
   final (docTypeName, name) = args;
@@ -93,21 +127,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   Document _apply(Document base) {
     if (_changes.isEmpty && _childChanges.isEmpty) return base;
     final payload = Map<String, dynamic>.from(base.payload)..addAll(_changes);
-    final children = Map<String, List<ChildRow>>.from(base.children);
-    _childChanges.forEach((key, rows) {
-      children[key] = [
-        for (var i = 0; i < rows.length; i++)
-          ChildRow(
-            id: '',
-            parentId: base.id,
-            parentDocType: base.docType,
-            tableName: key,
-            rowIndex: i,
-            payload: Map<String, dynamic>.from(rows[i]),
-          ),
-      ];
-    });
-    return base.copyWith(payload: payload, children: children);
+    return applyChildChanges(base.copyWith(payload: payload), _childChanges);
   }
 
   Document _emptyDoc() => Document(id: '', docType: widget.docTypeName);
@@ -393,11 +413,7 @@ class _MetaForm extends StatelessWidget {
   /// Child rows come from [Document.children] (the `document_children` table),
   /// not the parent payload. In-flight edits are already merged here because
   /// the form rebuilds `doc.children` via `_apply` before this widget renders.
-  List<Map<String, dynamic>> _rowsFor(String key) {
-    final rows = doc.children[key];
-    if (rows == null) return const [];
-    return [for (final r in rows) Map<String, dynamic>.from(r.payload)];
-  }
+  List<Map<String, dynamic>> _rowsFor(String key) => childRowsAsMaps(doc, key);
 }
 
 class _SectionCard extends StatelessWidget {
