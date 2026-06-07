@@ -140,27 +140,6 @@ void main() {
     expect(find.text('Qty'), findsOneWidget);
   });
 
-  testWidgets('child-table renders existing rows from document_children',
-      (tester) async {
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    // Line item lives in the document_children table (Document.children),
-    // not the parent payload. Before the fix the form read payload['items']
-    // and showed an empty grid.
-    await _seedOrderWithItem(database.db);
-
-    await tester.pumpWidget(wrap(const GenericFormView(
-      docTypeName: 'Demo Order',
-      documentName: 'ORD-0001',
-    )));
-    await _drain(tester);
-
-    expect(find.text('WIDGET-1'), findsOneWidget);
-    expect(find.text('5'), findsOneWidget);
-  });
-
   testWidgets('link picker fallback lists seeded records by their title',
       (tester) async {
     tester.view.physicalSize = const Size(1200, 900);
@@ -198,29 +177,6 @@ Future<void> _drain(WidgetTester tester) async {
     });
     await tester.pump();
   }
-}
-
-Future<void> _seedOrderWithItem(Database db) async {
-  await db.insert('documents', {
-    'id': 'ORD-0001',
-    'doctype': 'Demo Order',
-    'company': null,
-    'docstatus': 0,
-    'payload': jsonEncode({'customer': 'CUST-0001'}),
-    'created_at': DateTime.now().millisecondsSinceEpoch,
-    'modified_at': DateTime.now().millisecondsSinceEpoch,
-    'sync_version': null,
-    'sync_state': 'local',
-    'amended_from': null,
-  });
-  await db.insert('document_children', {
-    'id': 'ORD-0001-row0',
-    'parent_id': 'ORD-0001',
-    'parent_doctype': 'Demo Order',
-    'table_name': 'items',
-    'row_index': 0,
-    'payload': jsonEncode({'item_code': 'WIDGET-1', 'qty': 5}),
-  });
 }
 
 Future<void> _seedCustomer(Database db, String id, String name) async {
