@@ -52,6 +52,26 @@ const double _kTrailingCellWidth = 44;
 /// tablet/desktop, a draggable bottom sheet on phone — so fields that
 /// don't fit comfortably as cells (longText, secondary attributes) are
 /// still reachable.
+/// [FieldDefinition.defaultValue] is always a String; coerce it to the column's
+/// runtime type so a newly added child row starts with proper typed values
+/// (numbers/booleans), not strings — both for display casts and so the row
+/// flows into ledger derivation as numbers. Falls back to the raw string when
+/// it can't be parsed.
+dynamic coerceChildDefault(FieldType type, String raw) {
+  switch (type) {
+    case FieldType.integer:
+      return int.tryParse(raw) ?? raw;
+    case FieldType.float:
+    case FieldType.currency:
+    case FieldType.percent:
+      return num.tryParse(raw) ?? raw;
+    case FieldType.check:
+      return raw == '1' || raw.toLowerCase() == 'true';
+    default:
+      return raw;
+  }
+}
+
 class ChildTableField extends StatefulWidget {
   const ChildTableField({
     super.key,
@@ -97,7 +117,8 @@ class _ChildTableFieldState extends State<ChildTableField> {
   void _addRow(DocType childType) {
     final blank = <String, dynamic>{};
     for (final f in childType.fields) {
-      if (f.defaultValue != null) blank[f.key] = f.defaultValue;
+      final d = f.defaultValue;
+      if (d != null) blank[f.key] = coerceChildDefault(f.type, d);
     }
     final next = List<Map<String, dynamic>>.from(widget.rows)..add(blank);
     widget.onChanged(next);
@@ -450,7 +471,7 @@ class _DataRow extends StatelessWidget {
         );
       case FieldType.integer:
         return _CellTextField(
-          value: (value as int?)?.toString() ?? '',
+          value: value?.toString() ?? '',
           textAlign: TextAlign.end,
           readOnly: readOnly,
           keyboardType: TextInputType.number,
@@ -461,7 +482,7 @@ class _DataRow extends StatelessWidget {
       case FieldType.currency:
       case FieldType.percent:
         return _CellTextField(
-          value: (value as num?)?.toString() ?? '',
+          value: value?.toString() ?? '',
           textAlign: TextAlign.end,
           readOnly: readOnly,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -470,7 +491,7 @@ class _DataRow extends StatelessWidget {
         );
       case FieldType.date:
         return _CellDateField(
-          value: value as String?,
+          value: value?.toString(),
           readOnly: readOnly,
           onChanged: (s) => _setCell(f.key, s),
         );
@@ -834,7 +855,7 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
         );
       case FieldType.integer:
         return TextFormField(
-          initialValue: (value as int?)?.toString() ?? '',
+          initialValue: value?.toString() ?? '',
           decoration: decoration,
           keyboardType: TextInputType.number,
           textAlign: TextAlign.end,
@@ -845,7 +866,7 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
       case FieldType.currency:
       case FieldType.percent:
         return TextFormField(
-          initialValue: (value as num?)?.toString() ?? '',
+          initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
             suffixText: f.type == FieldType.percent ? '%' : null,
           ),
@@ -857,7 +878,7 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
       case FieldType.date:
         return TextFormField(
           key: ValueKey('date_${f.key}_${value ?? ""}'),
-          initialValue: value as String? ?? '',
+          initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
             suffixIcon: widget.readOnly
                 ? null
