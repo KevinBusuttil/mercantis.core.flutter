@@ -53,7 +53,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 |---------|:----:|-------|
 | Adaptive shell / navigation / routing | ✅ | phone/tablet/desktop breakpoints |
 | Generic form view | 🟡 | ~13 of 34 field types real; rest fall back to text editor |
-| Date/time & media/attachment field widgets | 🟡 | date picker only; time, dateTime, file/attach, signature, color, barcode fall back to text |
+| Date/time & media/attachment field widgets | 🟡 | **date, time & dateTime pickers now real**; file/attach, signature, color, barcode still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
 | Record workspace chrome (Form/Timeline/Attachments) | 🟡 | Timeline & Attachments tabs are placeholders (no-op buttons) |
 | Form builder (palette/canvas/inspector) | 🟡 | **save not wired** to DocumentEngine |
@@ -61,8 +61,8 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Workspaces / dashboard cards | 🟡 | cards render; need real DashboardEngine data via the grid |
 | Approvals inbox | ✅ | |
 | **Notification inbox** | ❌ | engine done; reader UI missing (only approvals inbox exists) |
-| **Report viewer** | ❌ | render `ReportResult` as table + CSV export (Swift: `GenericReportView`) |
-| **Dashboard grid** | ❌ | render `DashboardResult` widgets (only a `DashboardCard` wrapper exists) |
+| **Report viewer** | ✅ | `ReportResultView` renders a `ReportResult` as a table + Copy-CSV (exported from core_ui) |
+| **Dashboard grid** | ✅ | `DashboardResultGrid` renders a `DashboardResult` (count/sum/list/shortcut/chart, per-widget error isolation) |
 | **Attachments UI** | ❌ | list/upload bound to the attachment engine |
 | **Import / Export UI** | ❌ | bound to the import/export engine |
 | **Print / PDF UI** | ❌ | print action + format picker bound to the print service |
