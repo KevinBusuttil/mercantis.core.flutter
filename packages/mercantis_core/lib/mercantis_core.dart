@@ -79,3 +79,7 @@ export 'src/reporting/dashboard_result.dart';
 export 'src/reporting/dashboard_engine.dart';
 export 'src/reporting/saved_report_definition.dart';
 export 'src/reporting/saved_report_engine.dart';
+export 'src/import_export/import_export_format.dart';
+export 'src/import_export/csv_codec.dart';
+export 'src/import_export/data_exporter.dart';
+export 'src/import_export/data_importer.dart';
