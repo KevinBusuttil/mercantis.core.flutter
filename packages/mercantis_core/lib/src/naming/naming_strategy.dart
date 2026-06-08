@@ -2,16 +2,22 @@ import 'package:sqflite_common/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../metadata/doc_type.dart';
 import '../document_engine/document.dart';
+import 'counter_block_allocator.dart';
 
 class NamingContext {
   final Database database;
   final String userId;
   final String? companyAbbr;
 
+  /// Identifies the saving device, so naming-series counter blocks (ADR-042)
+  /// can be reserved per device and never collide across offline devices.
+  final String deviceId;
+
   const NamingContext({
     required this.database,
     required this.userId,
     this.companyAbbr,
+    this.deviceId = 'local',
   });
 }
 
@@ -32,7 +38,10 @@ class UuidV4Strategy implements NamingStrategy {
 
 class NamingSeriesStrategy implements NamingStrategy {
   final String pattern;
-  const NamingSeriesStrategy(this.pattern);
+  final CounterBlockAllocator allocator;
+
+  const NamingSeriesStrategy(this.pattern,
+      {this.allocator = const CounterBlockAllocator()});
 
   @override
   Future<String> resolve(
@@ -44,22 +53,40 @@ class NamingSeriesStrategy implements NamingStrategy {
     result = result.replaceAll('.MM.', '.${now.month.toString().padLeft(2, '0')}.');
     result = result.replaceAll('.DD.', '.${now.day.toString().padLeft(2, '0')}.');
 
-    // Resolve hash placeholder (sequential number)
+    // Resolve hash placeholder via a per-device counter block (ADR-042),
+    // keyed on the resolved prefix so each series (and year) sequences
+    // independently and offline devices never collide.
     final hashMatch = RegExp(r'\.#+\.?$').firstMatch(result);
     if (hashMatch != null) {
       final hashPart = hashMatch.group(0)!;
       final digits = hashPart.replaceAll(RegExp('[^#]'), '').length;
       final prefix = result.substring(0, hashMatch.start);
 
-      // Count existing documents with this prefix
-      final rows = await context.database.rawQuery(
-        "SELECT COUNT(*) as cnt FROM documents WHERE id LIKE ?",
-        ['$prefix%'],
+      final n = await allocator.next(
+        context.database,
+        prefix,
+        context.deviceId,
+        seedFloor: (txn) => _maxExistingSuffix(txn, prefix),
       );
-      final count = ((rows.first['cnt'] as int?) ?? 0) + 1;
-      result = '$prefix${count.toString().padLeft(digits, '0')}';
+      result = '$prefix${n.toString().padLeft(digits, '0')}';
     }
     return result;
+  }
+
+  /// Highest numeric suffix already used by documents under [prefix], so a
+  /// freshly-introduced counter (e.g. on upgrade from the old COUNT-based
+  /// naming) starts above existing ids rather than colliding with them.
+  Future<int> _maxExistingSuffix(DatabaseExecutor txn, String prefix) async {
+    final rows = await txn.query('documents',
+        columns: ['id'], where: 'id LIKE ?', whereArgs: ['$prefix%']);
+    var maxN = 0;
+    for (final r in rows) {
+      final id = r['id'] as String;
+      if (id.length <= prefix.length) continue;
+      final n = int.tryParse(id.substring(prefix.length));
+      if (n != null && n > maxN) maxN = n;
+    }
+    return maxN;
   }
 }
 

@@ -5,6 +5,7 @@ class MigrationRunner {
     final version = await _schemaVersion(db);
     if (version < 1) await _v1(db);
     if (version < 2) await _v2(db);
+    if (version < 3) await _v3(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -163,5 +164,32 @@ class MigrationRunner {
       'ALTER TABLE custom_fields ADD COLUMN insert_after TEXT',
     );
     await db.update('schema_version', {'version': 2});
+  }
+
+  /// v3: per-device naming counter blocks (ADR-042).
+  ///
+  /// `naming_block_allocations` is the shared high-water mark per series;
+  /// `naming_counter_blocks` records the disjoint block each device has
+  /// reserved (and how far into it the device has consumed), so offline
+  /// multi-device saves draw from non-overlapping ranges and numbers are never
+  /// reused after a delete.
+  static Future<void> _v3(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS naming_block_allocations (
+        series TEXT PRIMARY KEY,
+        allocated_through INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS naming_counter_blocks (
+        series TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        block_start INTEGER NOT NULL,
+        block_end INTEGER NOT NULL,
+        next_value INTEGER NOT NULL,
+        PRIMARY KEY (series, device_id)
+      )
+    ''');
+    await db.update('schema_version', {'version': 3});
   }
 }

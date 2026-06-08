@@ -2,6 +2,7 @@ import 'field_definition.dart';
 import 'permission_rule.dart';
 import 'sync_policy.dart';
 import 'index_definition.dart';
+import 'document_naming_rule.dart';
 
 class DocType {
   final String id;
@@ -19,9 +20,19 @@ class DocType {
   final String? workflowId;
   final bool isCustom;
   final String? namingRule;
+
+  /// Conditional naming series (ADR-040). Evaluated in order before
+  /// [namingRule]; the first whose condition matches is used.
+  final List<DocumentNamingRule> namingRules;
   final bool trackChanges;
   final int? maxAttachments;
   final bool makeAttachmentsPublic;
+
+  /// Boolean expression auto-applied by `DocumentEngine.list` to gate which
+  /// rows the current user may see (ADR-037). Evaluated per document with the
+  /// row's fields plus `user.id` / `user.roles` in context; rows for which it
+  /// is false are dropped. Null means no row-level restriction.
+  final String? rowAccessExpression;
 
   const DocType({
     required this.id,
@@ -39,9 +50,11 @@ class DocType {
     this.workflowId,
     this.isCustom = false,
     this.namingRule,
+    this.namingRules = const [],
     this.trackChanges = false,
     this.maxAttachments,
     this.makeAttachmentsPublic = false,
+    this.rowAccessExpression,
   });
 
   factory DocType.fromJson(Map<String, dynamic> json) => DocType(
@@ -71,9 +84,15 @@ class DocType {
         workflowId: json['workflowId'] as String?,
         isCustom: (json['isCustom'] as bool?) ?? false,
         namingRule: json['namingRule'] as String?,
+        namingRules: (json['namingRules'] as List<dynamic>?)
+                ?.map((r) =>
+                    DocumentNamingRule.fromJson(r as Map<String, dynamic>))
+                .toList() ??
+            const [],
         trackChanges: (json['trackChanges'] as bool?) ?? false,
         maxAttachments: json['maxAttachments'] as int?,
         makeAttachmentsPublic: (json['makeAttachmentsPublic'] as bool?) ?? false,
+        rowAccessExpression: json['rowAccessExpression'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -92,17 +111,21 @@ class DocType {
         if (workflowId != null) 'workflowId': workflowId,
         'isCustom': isCustom,
         if (namingRule != null) 'namingRule': namingRule,
+        if (namingRules.isNotEmpty)
+          'namingRules': namingRules.map((r) => r.toJson()).toList(),
         'trackChanges': trackChanges,
         if (maxAttachments != null) 'maxAttachments': maxAttachments,
         'makeAttachmentsPublic': makeAttachmentsPublic,
+        if (rowAccessExpression != null) 'rowAccessExpression': rowAccessExpression,
       };
 
   DocType copyWith({
     String? id, String? name, String? module, bool? isSubmittable, bool? isSingleton,
     bool? isTree, bool? isChild, String? parentField, List<FieldDefinition>? fields,
     List<PermissionRule>? permissions, SyncPolicy? syncPolicy, List<IndexDefinition>? indexes,
-    String? workflowId, bool? isCustom, String? namingRule, bool? trackChanges,
-    int? maxAttachments, bool? makeAttachmentsPublic,
+    String? workflowId, bool? isCustom, String? namingRule,
+    List<DocumentNamingRule>? namingRules, bool? trackChanges,
+    int? maxAttachments, bool? makeAttachmentsPublic, String? rowAccessExpression,
   }) =>
       DocType(
         id: id ?? this.id,
@@ -120,8 +143,10 @@ class DocType {
         workflowId: workflowId ?? this.workflowId,
         isCustom: isCustom ?? this.isCustom,
         namingRule: namingRule ?? this.namingRule,
+        namingRules: namingRules ?? this.namingRules,
         trackChanges: trackChanges ?? this.trackChanges,
         maxAttachments: maxAttachments ?? this.maxAttachments,
         makeAttachmentsPublic: makeAttachmentsPublic ?? this.makeAttachmentsPublic,
+        rowAccessExpression: rowAccessExpression ?? this.rowAccessExpression,
       );
 }

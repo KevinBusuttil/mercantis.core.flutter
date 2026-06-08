@@ -15,6 +15,7 @@ import '../notifications/event_emitter.dart';
 import 'document.dart';
 import 'document_engine_error.dart';
 import 'document_version.dart';
+import 'list_filter.dart';
 import 'validation_pipeline.dart';
 
 export 'document_engine_error.dart';
@@ -118,7 +119,8 @@ class DocumentEngine {
 
     // Assign ID if new
     if (doc.id.isEmpty) {
-      final context = NamingContext(database: _db, userId: userId);
+      final context =
+          NamingContext(database: _db, userId: userId, deviceId: deviceId);
       doc.id = await _namingService.resolve(docType, doc, context);
       doc.createdAt = DateTime.now();
     }
@@ -367,6 +369,7 @@ class DocumentEngine {
   Future<List<Document>> list(
     String docType, {
     Map<String, dynamic>? filters,
+    List<ListFilter>? predicates,
     String? whereExpression,
     List<({String field, bool ascending})>? sortBy,
     int? limit,
@@ -380,6 +383,15 @@ class DocumentEngine {
       for (final entry in filters.entries) {
         query += " AND json_extract(payload, '\$.${entry.key}') = ?";
         args.add(entry.value);
+      }
+    }
+
+    // Typed predicates pushed down to SQL (ADR-036).
+    if (predicates != null) {
+      for (final p in predicates) {
+        final (clause, clauseArgs) = p.toSql();
+        query += ' AND $clause';
+        args.addAll(clauseArgs);
       }
     }
 
@@ -401,17 +413,29 @@ class DocumentEngine {
     final rows = await _db.rawQuery(query, args);
     var docs = rows.map((r) => Document.fromDbRow(r)).toList();
 
-    if (whereExpression != null && whereExpression.isNotEmpty) {
+    // Expression-based filtering: the DocType's auto-applied row-access
+    // expression (ADR-037) plus any caller whereExpression. Both evaluate per
+    // document with the row fields and user (id + roles) in context.
+    final docTypeMeta = await _registry.get(docType);
+    final rowAccess = docTypeMeta?.rowAccessExpression;
+    final expressions = <String>[
+      if (rowAccess != null && rowAccess.isNotEmpty) rowAccess,
+      if (whereExpression != null && whereExpression.isNotEmpty) whereExpression,
+    ];
+    if (expressions.isNotEmpty) {
       docs = docs.where((doc) {
-        try {
-          final ctx = EvaluationContext(
-            fields: doc.payload,
-            user: {'id': userId},
-          );
-          return _expressionEvaluator.evaluateBool(whereExpression, ctx);
-        } catch (_) {
-          return false;
+        final ctx = EvaluationContext(
+          fields: doc.payload,
+          user: {'id': userId, 'roles': userRoles?.toList() ?? const []},
+        );
+        for (final expr in expressions) {
+          try {
+            if (!_expressionEvaluator.evaluateBool(expr, ctx)) return false;
+          } catch (_) {
+            return false;
+          }
         }
+        return true;
       }).toList();
     }
 

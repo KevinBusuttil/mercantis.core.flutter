@@ -1,5 +1,6 @@
 // Metadata
 export 'src/metadata/doc_type.dart';
+export 'src/metadata/document_naming_rule.dart';
 export 'src/metadata/field_definition.dart';
 export 'src/metadata/permission_rule.dart';
 export 'src/metadata/sync_policy.dart';
@@ -14,6 +15,7 @@ export 'src/metadata/built_in_doc_types.dart';
 export 'src/document_engine/document.dart';
 export 'src/document_engine/document_engine.dart';
 export 'src/document_engine/document_version.dart';
+export 'src/document_engine/list_filter.dart';
 export 'src/document_engine/validation_pipeline.dart';
 
 // Storage
@@ -42,6 +44,7 @@ export 'src/sync_engine/sync_engine.dart';
 // Naming
 export 'src/naming/naming_strategy.dart';
 export 'src/naming/naming_service.dart';
+export 'src/naming/counter_block_allocator.dart';
 
 // Automation
 export 'src/automation/automation_action_handler.dart';
