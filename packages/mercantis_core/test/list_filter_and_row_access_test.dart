@@ -65,7 +65,7 @@ void main() {
     });
 
     test('between is inclusive', () async {
-      expect(await totalsWhere(const ListFilter.between('total', 100, 250)),
+      expect(await totalsWhere(ListFilter.between('total', 100, 250)),
           [100, 250]);
     });
 
