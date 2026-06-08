@@ -4,6 +4,28 @@ import '../document_engine/document.dart';
 import 'automation_action_handler.dart';
 import 'automation_action_registry.dart';
 
+/// When an [AutomationRule] should fire on a schedule rather than in response
+/// to a document event (`event == 'on_schedule'`). The [interval] name maps to
+/// `TaskInterval`; [cron] supplies the 5-field expression when interval is
+/// `cron`. (ADR-041)
+class AutomationSchedule {
+  final String interval;
+  final String? cron;
+
+  const AutomationSchedule({required this.interval, this.cron});
+
+  factory AutomationSchedule.fromJson(Map<String, dynamic> json) =>
+      AutomationSchedule(
+        interval: json['interval'] as String? ?? 'daily',
+        cron: json['cron'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'interval': interval,
+        if (cron != null) 'cron': cron,
+      };
+}
+
 class AutomationRule {
   final String id;
   final String event;
@@ -11,13 +33,20 @@ class AutomationRule {
   final String? conditionExpression;
   final List<Map<String, dynamic>> actions;
 
+  /// Present for `on_schedule` rules; null for document-event rules.
+  final AutomationSchedule? schedule;
+
   const AutomationRule({
     required this.id,
     required this.event,
     this.docType,
     this.conditionExpression,
     required this.actions,
+    this.schedule,
   });
+
+  /// Whether this rule is driven by the scheduler rather than a document event.
+  bool get isScheduled => event == 'on_schedule';
 
   factory AutomationRule.fromJson(Map<String, dynamic> json) => AutomationRule(
         id: json['id'] as String,
@@ -28,6 +57,10 @@ class AutomationRule {
                 ?.map((a) => Map<String, dynamic>.from(a as Map))
                 .toList() ??
             [],
+        schedule: json['schedule'] == null
+            ? null
+            : AutomationSchedule.fromJson(
+                Map<String, dynamic>.from(json['schedule'] as Map)),
       );
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +70,7 @@ class AutomationRule {
         if (conditionExpression != null)
           'conditionExpression': conditionExpression,
         'actions': actions,
+        if (schedule != null) 'schedule': schedule!.toJson(),
       };
 }
 
@@ -78,30 +112,59 @@ class AutomationRunner {
     });
 
     for (final rule in matching) {
-      bool shouldRun = true;
-      if (rule.conditionExpression != null &&
-          rule.conditionExpression!.isNotEmpty) {
-        try {
-          final ctx = EvaluationContext(fields: document.payload, user: {});
-          shouldRun =
-              _evaluator.evaluateBool(rule.conditionExpression!, ctx);
-        } catch (_) {
-          shouldRun = false;
-        }
-      }
-      if (!shouldRun) continue;
+      await _runRuleForDocument(rule, document, context);
+    }
+  }
 
-      for (final action in rule.actions) {
-        final actionType = action['actionType'] as String?;
-        final parameters = Map<String, dynamic>.from(
-            action['parameters'] as Map? ?? {});
-        if (actionType == null) continue;
-        try {
-          await _registry.execute(
-              actionType, document, parameters, context);
-        } catch (_) {
-          // Log error but don't fail the document save
-        }
+  /// Runs a scheduled (`on_schedule`) rule by fanning out across every document
+  /// of the rule's docType, evaluating the rule condition per document and
+  /// executing its actions for each match. A rule without a docType runs its
+  /// actions once against a synthetic empty document. (ADR-041)
+  Future<void> runScheduled(
+    AutomationRule rule,
+    AutomationContext context,
+  ) async {
+    if (rule.docType == null) {
+      await _runRuleForDocument(
+          rule, Document(id: '', docType: ''), context);
+      return;
+    }
+    final documents = await context.documentEngine.list(rule.docType!);
+    for (final document in documents) {
+      await _runRuleForDocument(rule, document, context);
+    }
+  }
+
+  /// Evaluates the rule's condition against [document] and, if it passes, runs
+  /// every action. Shared by document-event and scheduled dispatch so both
+  /// honour the same condition/error semantics: a failing condition skips the
+  /// document, and a failing action never aborts the rest.
+  Future<void> _runRuleForDocument(
+    AutomationRule rule,
+    Document document,
+    AutomationContext context,
+  ) async {
+    if (rule.conditionExpression != null &&
+        rule.conditionExpression!.isNotEmpty) {
+      bool shouldRun;
+      try {
+        final ctx = EvaluationContext(fields: document.payload, user: {});
+        shouldRun = _evaluator.evaluateBool(rule.conditionExpression!, ctx);
+      } catch (_) {
+        shouldRun = false;
+      }
+      if (!shouldRun) return;
+    }
+
+    for (final action in rule.actions) {
+      final actionType = action['actionType'] as String?;
+      if (actionType == null) continue;
+      final parameters =
+          Map<String, dynamic>.from(action['parameters'] as Map? ?? {});
+      try {
+        await _registry.execute(actionType, document, parameters, context);
+      } catch (_) {
+        // Log error but don't fail the rest of the rule.
       }
     }
   }
