@@ -4,6 +4,31 @@ import 'package:mercantis_core/mercantis_core.dart';
 
 import '../shell/breakpoints.dart';
 
+/// Shared across rows so the expression parse-cache is reused. Evaluates
+/// per-row `formulaExpression`s (e.g. `amount = qty * rate`) live as cells edit.
+final _rowFormulaEvaluator = ExpressionEvaluator();
+
+/// Recomputes every formula field in [row] (in place) from its
+/// `formulaExpression`, evaluated against the row's own values — e.g. a child
+/// table's `amount = qty * rate`. A formula that can't evaluate yet (a missing
+/// operand) leaves its field untouched. Public so it can be unit-tested.
+void applyRowFormulas(
+  Iterable<FieldDefinition> fields,
+  Map<String, dynamic> row, {
+  ExpressionEvaluator? evaluator,
+}) {
+  final ev = evaluator ?? _rowFormulaEvaluator;
+  for (final f in fields) {
+    final expr = f.formulaExpression;
+    if (expr == null || expr.isEmpty) continue;
+    try {
+      row[f.key] = ev.evaluateValue(expr, EvaluationContext(fields: row));
+    } catch (_) {
+      // Operand not ready (e.g. rate still blank) — leave as-is.
+    }
+  }
+}
+
 /// Marker passed down to every shared input wrapper inside a
 /// child-table data cell. The cell consumer reads it through
 /// [ChildTableContext.isInline] and suppresses the field's external
@@ -403,6 +428,7 @@ class _DataRow extends StatelessWidget {
   void _setCell(String key, dynamic value) {
     final next = Map<String, dynamic>.from(row);
     next[key] = value;
+    applyRowFormulas(fields, next);
     onChanged(next);
   }
 
