@@ -38,6 +38,7 @@ export 'src/expression_engine/document_lookup_resolver.dart';
 // Sync Engine
 export 'src/sync_engine/mutation_record.dart';
 export 'src/sync_engine/cloud_adapter.dart';
+export 'src/sync_engine/file_system_cloud_adapter.dart';
 export 'src/sync_engine/conflict_resolver.dart';
 export 'src/sync_engine/sync_engine.dart';
 
@@ -86,3 +87,8 @@ export 'src/import_export/data_importer.dart';
 export 'src/files/attachment.dart';
 export 'src/files/attachment_store.dart';
 export 'src/files/attachment_manager.dart';
+export 'src/printing/print_format.dart';
+export 'src/printing/print_renderer.dart';
+export 'src/printing/plain_text_print_renderer.dart';
+export 'src/printing/pdf_print_renderer.dart';
+export 'src/printing/print_service.dart';
