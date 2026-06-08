@@ -689,6 +689,22 @@ class FieldWidget extends StatelessWidget {
           readOnly: readOnly,
           onChanged: onChanged,
         );
+      case FieldType.time:
+        return _TimeField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.dateTime:
+        return _DateTimeField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
       case FieldType.link:
         return LinkPickerField(
           label: _label,
@@ -862,6 +878,114 @@ class _DateField extends StatelessWidget {
                   if (picked != null) {
                     onChanged(DateFormat('yyyy-MM-dd').format(picked));
                   }
+                },
+              ),
+      ),
+      readOnly: readOnly,
+      onChanged: readOnly ? null : onChanged,
+    );
+  }
+}
+
+/// Time-of-day picker storing a `HH:mm` string. Mirrors [_DateField].
+class _TimeField extends StatelessWidget {
+  const _TimeField({
+    required this.label,
+    required this.required,
+    required this.value,
+    required this.readOnly,
+    required this.onChanged,
+  });
+  final String label;
+  final bool required;
+  final String? value;
+  final bool readOnly;
+  final ValueChanged<dynamic> onChanged;
+
+  static TimeOfDay _parse(String? v) {
+    if (v != null && v.contains(':')) {
+      final parts = v.split(':');
+      final h = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (h != null && m != null) return TimeOfDay(hour: h, minute: m);
+    }
+    return TimeOfDay.now();
+  }
+
+  static String _format(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final inline = ChildTableContext.isInline(context);
+    return TextFormField(
+      key: ValueKey('time_$value'),
+      initialValue: value ?? '',
+      decoration: InputDecoration(
+        label: inline ? null : _RequiredAwareLabel(label: label, required: required),
+        hintText: inline ? label : null,
+        isDense: inline,
+        suffixIcon: readOnly
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.schedule),
+                onPressed: () async {
+                  final picked = await showTimePicker(context: context, initialTime: _parse(value));
+                  if (picked != null) onChanged(_format(picked));
+                },
+              ),
+      ),
+      readOnly: readOnly,
+      onChanged: readOnly ? null : onChanged,
+    );
+  }
+}
+
+/// Combined date + time picker storing a `yyyy-MM-dd HH:mm` string.
+class _DateTimeField extends StatelessWidget {
+  const _DateTimeField({
+    required this.label,
+    required this.required,
+    required this.value,
+    required this.readOnly,
+    required this.onChanged,
+  });
+  final String label;
+  final bool required;
+  final String? value;
+  final bool readOnly;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final inline = ChildTableContext.isInline(context);
+    return TextFormField(
+      key: ValueKey('datetime_$value'),
+      initialValue: value ?? '',
+      decoration: InputDecoration(
+        label: inline ? null : _RequiredAwareLabel(label: label, required: required),
+        hintText: inline ? label : null,
+        isDense: inline,
+        suffixIcon: readOnly
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.event),
+                onPressed: () async {
+                  final existing = DateTime.tryParse(value ?? '') ?? DateTime.now();
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: existing,
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2100),
+                  );
+                  if (date == null || !context.mounted) return;
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(existing),
+                  );
+                  if (time == null) return;
+                  final combined = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                  onChanged(DateFormat('yyyy-MM-dd HH:mm').format(combined));
                 },
               ),
       ),

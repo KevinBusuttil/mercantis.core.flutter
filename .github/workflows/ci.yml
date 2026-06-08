@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: flutter analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.0"
+          channel: stable
+          cache: true
+      - run: flutter --version
+      # Resolve the whole pub workspace once, then analyze each member package.
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
+        working-directory: packages/mercantis_core
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
+        working-directory: packages/mercantis_core_ui
+
+  test:
+    name: flutter test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # DB-backed tests use sqflite_common_ffi, which needs libsqlite3.
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.0"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+        working-directory: packages/mercantis_core
+      - run: flutter test
+        working-directory: packages/mercantis_core_ui
