@@ -59,6 +59,8 @@ export 'src/app_runtime/extension_point_resolver.dart';
 
 // Notifications / Events
 export 'src/notifications/event_emitter.dart';
+export 'src/notifications/notification_log.dart';
+export 'src/notifications/notification_inbox.dart';
 
 // Scheduling
 export 'src/scheduling/scheduled_task.dart';
