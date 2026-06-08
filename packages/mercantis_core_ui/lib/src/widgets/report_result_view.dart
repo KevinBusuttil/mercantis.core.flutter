@@ -47,7 +47,13 @@ class ReportResultView extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(child: ErpDataTable(columns: columns, rows: rows)),
+        // ErpDataTable lays its rows out in a plain Column (no internal
+        // scroll), so it must be wrapped to scroll for multi-page reports.
+        Expanded(
+          child: SingleChildScrollView(
+            child: ErpDataTable(columns: columns, rows: rows),
+          ),
+        ),
       ],
     );
   }

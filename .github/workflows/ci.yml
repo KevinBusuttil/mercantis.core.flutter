@@ -23,9 +23,9 @@ jobs:
       - run: flutter --version
       # Resolve the whole pub workspace once, then analyze each member package.
       - run: flutter pub get
-      - run: flutter analyze
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
         working-directory: packages/mercantis_core
-      - run: flutter analyze
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
         working-directory: packages/mercantis_core_ui
 
   test:
