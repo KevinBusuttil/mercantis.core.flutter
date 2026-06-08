@@ -119,7 +119,8 @@ class DocumentEngine {
 
     // Assign ID if new
     if (doc.id.isEmpty) {
-      final context = NamingContext(database: _db, userId: userId);
+      final context =
+          NamingContext(database: _db, userId: userId, deviceId: deviceId);
       doc.id = await _namingService.resolve(docType, doc, context);
       doc.createdAt = DateTime.now();
     }

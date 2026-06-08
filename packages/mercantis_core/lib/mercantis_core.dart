@@ -44,6 +44,7 @@ export 'src/sync_engine/sync_engine.dart';
 // Naming
 export 'src/naming/naming_strategy.dart';
 export 'src/naming/naming_service.dart';
+export 'src/naming/counter_block_allocator.dart';
 
 // Automation
 export 'src/automation/automation_action_handler.dart';
