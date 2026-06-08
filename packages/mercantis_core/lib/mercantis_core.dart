@@ -75,3 +75,5 @@ export 'src/reporting/report_result.dart';
 export 'src/reporting/report_engine.dart';
 export 'src/reporting/dashboard_result.dart';
 export 'src/reporting/dashboard_engine.dart';
+export 'src/reporting/saved_report_definition.dart';
+export 'src/reporting/saved_report_engine.dart';
