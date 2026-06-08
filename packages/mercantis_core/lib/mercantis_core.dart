@@ -1,5 +1,6 @@
 // Metadata
 export 'src/metadata/doc_type.dart';
+export 'src/metadata/document_naming_rule.dart';
 export 'src/metadata/field_definition.dart';
 export 'src/metadata/permission_rule.dart';
 export 'src/metadata/sync_policy.dart';
