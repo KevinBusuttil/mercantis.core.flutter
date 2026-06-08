@@ -6,6 +6,7 @@ class MigrationRunner {
     if (version < 1) await _v1(db);
     if (version < 2) await _v2(db);
     if (version < 3) await _v3(db);
+    if (version < 4) await _v4(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -191,5 +192,36 @@ class MigrationRunner {
       )
     ''');
     await db.update('schema_version', {'version': 3});
+  }
+
+  /// v4: persistent notification log (ADR-048).
+  ///
+  /// Replaces the in-memory default sink for production: channels (the in-app
+  /// inbox, future email/SMS adapters) write to and read from this table via
+  /// `SqliteNotificationLog` and `NotificationInbox`. `read_at` is null until
+  /// the in-app inbox marks an entry read. Timestamps are epoch milliseconds,
+  /// matching the rest of the Dart schema.
+  static Future<void> _v4(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notification_log (
+        id TEXT PRIMARY KEY NOT NULL,
+        app_id TEXT NOT NULL,
+        doc_type TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        recipient TEXT,
+        subject TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        emitted_at INTEGER NOT NULL,
+        read_at INTEGER
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_notification_recipient ON notification_log (recipient)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_notification_emitted_at ON notification_log (emitted_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_notification_unread ON notification_log (recipient, read_at)');
+    await db.update('schema_version', {'version': 4});
   }
 }
