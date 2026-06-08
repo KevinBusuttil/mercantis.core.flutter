@@ -86,3 +86,8 @@ export 'src/import_export/data_importer.dart';
 export 'src/files/attachment.dart';
 export 'src/files/attachment_store.dart';
 export 'src/files/attachment_manager.dart';
+export 'src/printing/print_format.dart';
+export 'src/printing/print_renderer.dart';
+export 'src/printing/plain_text_print_renderer.dart';
+export 'src/printing/pdf_print_renderer.dart';
+export 'src/printing/print_service.dart';
