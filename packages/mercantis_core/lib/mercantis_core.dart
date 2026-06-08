@@ -14,6 +14,7 @@ export 'src/metadata/built_in_doc_types.dart';
 export 'src/document_engine/document.dart';
 export 'src/document_engine/document_engine.dart';
 export 'src/document_engine/document_version.dart';
+export 'src/document_engine/list_filter.dart';
 export 'src/document_engine/validation_pipeline.dart';
 
 // Storage

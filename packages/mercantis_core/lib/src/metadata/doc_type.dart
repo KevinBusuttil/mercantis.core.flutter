@@ -23,6 +23,12 @@ class DocType {
   final int? maxAttachments;
   final bool makeAttachmentsPublic;
 
+  /// Boolean expression auto-applied by `DocumentEngine.list` to gate which
+  /// rows the current user may see (ADR-037). Evaluated per document with the
+  /// row's fields plus `user.id` / `user.roles` in context; rows for which it
+  /// is false are dropped. Null means no row-level restriction.
+  final String? rowAccessExpression;
+
   const DocType({
     required this.id,
     required this.name,
@@ -42,6 +48,7 @@ class DocType {
     this.trackChanges = false,
     this.maxAttachments,
     this.makeAttachmentsPublic = false,
+    this.rowAccessExpression,
   });
 
   factory DocType.fromJson(Map<String, dynamic> json) => DocType(
@@ -74,6 +81,7 @@ class DocType {
         trackChanges: (json['trackChanges'] as bool?) ?? false,
         maxAttachments: json['maxAttachments'] as int?,
         makeAttachmentsPublic: (json['makeAttachmentsPublic'] as bool?) ?? false,
+        rowAccessExpression: json['rowAccessExpression'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -95,6 +103,7 @@ class DocType {
         'trackChanges': trackChanges,
         if (maxAttachments != null) 'maxAttachments': maxAttachments,
         'makeAttachmentsPublic': makeAttachmentsPublic,
+        if (rowAccessExpression != null) 'rowAccessExpression': rowAccessExpression,
       };
 
   DocType copyWith({
@@ -102,7 +111,7 @@ class DocType {
     bool? isTree, bool? isChild, String? parentField, List<FieldDefinition>? fields,
     List<PermissionRule>? permissions, SyncPolicy? syncPolicy, List<IndexDefinition>? indexes,
     String? workflowId, bool? isCustom, String? namingRule, bool? trackChanges,
-    int? maxAttachments, bool? makeAttachmentsPublic,
+    int? maxAttachments, bool? makeAttachmentsPublic, String? rowAccessExpression,
   }) =>
       DocType(
         id: id ?? this.id,
@@ -123,5 +132,6 @@ class DocType {
         trackChanges: trackChanges ?? this.trackChanges,
         maxAttachments: maxAttachments ?? this.maxAttachments,
         makeAttachmentsPublic: makeAttachmentsPublic ?? this.makeAttachmentsPublic,
+        rowAccessExpression: rowAccessExpression ?? this.rowAccessExpression,
       );
 }
