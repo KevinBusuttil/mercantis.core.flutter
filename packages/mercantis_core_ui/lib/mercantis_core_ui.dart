@@ -8,6 +8,7 @@ export 'src/theme/tokens/brand_colors.dart';
 
 // Providers
 export 'src/providers/core_providers.dart';
+export 'src/providers/attachment_providers.dart';
 
 // Shell
 export 'src/shell/breakpoints.dart';
@@ -45,6 +46,7 @@ export 'src/widgets/workflow_action_button.dart';
 export 'src/widgets/erp_data_table.dart';
 export 'src/widgets/report_result_view.dart';
 export 'src/widgets/dashboard_result_grid.dart';
+export 'src/widgets/attachments_panel.dart';
 export 'src/widgets/link_picker_field.dart';
 export 'src/widgets/child_table_field.dart';
 export 'src/widgets/search/global_search.dart';
