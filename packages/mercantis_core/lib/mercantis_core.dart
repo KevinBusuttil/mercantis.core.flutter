@@ -83,3 +83,6 @@ export 'src/import_export/import_export_format.dart';
 export 'src/import_export/csv_codec.dart';
 export 'src/import_export/data_exporter.dart';
 export 'src/import_export/data_importer.dart';
+export 'src/files/attachment.dart';
+export 'src/files/attachment_store.dart';
+export 'src/files/attachment_manager.dart';

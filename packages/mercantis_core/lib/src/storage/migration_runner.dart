@@ -7,6 +7,7 @@ class MigrationRunner {
     if (version < 2) await _v2(db);
     if (version < 3) await _v3(db);
     if (version < 4) await _v4(db);
+    if (version < 5) await _v5(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -223,5 +224,36 @@ class MigrationRunner {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_notification_unread ON notification_log (recipient, read_at)');
     await db.update('schema_version', {'version': 4});
+  }
+
+  /// v5: file attachments (ADR-043).
+  ///
+  /// Bytes live on disk under the attachment store's root; this table holds
+  /// metadata only. `field_key` is nullable: null is a general document
+  /// attachment, non-null binds it to a `FieldType.attach` field for typed UI.
+  /// `uploaded_at` is epoch millis, matching the rest of the schema.
+  static Future<void> _v5(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY NOT NULL,
+        document_id TEXT NOT NULL,
+        doc_type TEXT NOT NULL,
+        field_key TEXT,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        byte_size INTEGER NOT NULL,
+        storage_path TEXT NOT NULL,
+        uploaded_at INTEGER NOT NULL,
+        uploaded_by TEXT NOT NULL,
+        sha256 TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_attachments_document ON attachments (document_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_attachments_doctype ON attachments (doc_type)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_attachments_field ON attachments (document_id, field_key)');
+    await db.update('schema_version', {'version': 5});
   }
 }
