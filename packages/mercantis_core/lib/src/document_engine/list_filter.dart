@@ -51,7 +51,8 @@ class ListFilter {
   const ListFilter.notLike(this.field, String pattern)
       : op = FilterOp.notLike,
         value = pattern;
-  const ListFilter.between(this.field, Object low, Object high)
+  // Not const: builds a list from runtime args.
+  ListFilter.between(this.field, Object low, Object high)
       : op = FilterOp.between,
         value = [low, high];
   const ListFilter.isNull(this.field)
