@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/attachments_panel.dart';
+import '../widgets/print_record_button.dart';
 import 'command_bar_view.dart';
 import 'customize_fields_sheet.dart';
 
@@ -59,6 +60,10 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
       appBar: AppBar(
         title: Text(widget.documentName ?? 'New ${widget.docTypeName}'),
         actions: [
+          PrintRecordButton(
+            docType: widget.docTypeName,
+            documentId: widget.documentName,
+          ),
           IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'Customize fields',
