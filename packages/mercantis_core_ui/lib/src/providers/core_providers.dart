@@ -58,7 +58,9 @@ final expressionEvaluatorProvider =
 
 final workflowEngineProvider = FutureProvider<WorkflowEngine>((ref) async {
   final db = await ref.watch(mercantisDatabaseProvider.future);
-  return WorkflowEngine(db.db);
+  // Share the app's emitter so workflow transitions fan out as
+  // WorkflowTransitionEvents (consumed e.g. by the Hub's WO auto-post).
+  return WorkflowEngine(db.db, emitter: ref.watch(eventEmitterProvider));
 });
 
 final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
