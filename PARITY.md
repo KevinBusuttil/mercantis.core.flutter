@@ -56,7 +56,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Date/time & media/attachment field widgets | 🟡 | **date, time & dateTime pickers now real**; file/attach, signature, color, barcode still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
 | Record workspace chrome (Form/Timeline/Attachments) | 🟡 | **Attachments tab now live** (`AttachmentsPanel`); Timeline tab still a placeholder |
-| Form builder (palette/canvas/inspector) | 🟡 | **save not wired** to DocumentEngine |
+| Form builder (palette/canvas/inspector) | ✅ | editable — add / rename / toggle-required / reorder / delete **custom fields**, persisted via `CustomField` on Save (cache invalidated so the form picks them up); base fields shown read-only |
 | Command palette / global search | ✅ | Cmd-K |
 | Workspaces / dashboard cards | 🟡 | cards render; need real DashboardEngine data via the grid |
 | Approvals inbox | ✅ | |
