@@ -3,6 +3,7 @@ import 'package:sqflite_common/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../document_engine/document.dart';
 import '../expression_engine/expression_evaluator.dart';
+import '../notifications/event_emitter.dart';
 
 class WorkflowState {
   final String name;
@@ -119,9 +120,13 @@ class WorkflowDefinition {
 
 class WorkflowEngine {
   final Database _db;
+  final EventEmitter? _emitter;
   static const _uuid = Uuid();
 
-  const WorkflowEngine(this._db);
+  /// [emitter], when supplied, receives a [WorkflowTransitionEvent] after every
+  /// successful [transition] — letting apps react to state changes (e.g. the
+  /// Hub auto-posting a production Stock Entry when a Work Order completes).
+  const WorkflowEngine(this._db, {EventEmitter? emitter}) : _emitter = emitter;
 
   List<WorkflowTransition> availableTransitions({
     required WorkflowDefinition workflow,
@@ -197,6 +202,15 @@ class WorkflowEngine {
       'user_id': 'system',
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
+
+    _emitter?.publish(WorkflowTransitionEvent(
+      documentId: document.id,
+      workflow: workflow.id,
+      fromState: currentState,
+      toState: t.toState,
+      action: action,
+      userId: 'system',
+    ));
 
     return document;
   }
