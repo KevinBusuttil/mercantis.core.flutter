@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
+import '../metadata/metadata_display.dart';
 import '../providers/core_providers.dart';
+import '../providers/recents_providers.dart';
+import '../shell/recents_store.dart';
 import '../widgets/child_table_field.dart';
 import '../widgets/link_picker_field.dart';
 import 'record_workspace_chrome.dart';
@@ -122,7 +125,31 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   bool _isSaving = false;
   String? _error;
 
+  /// Guards against re-recording the same opened record on every rebuild.
+  String? _recordedKey;
+
   bool get _isDirty => _changes.isNotEmpty || _childChanges.isNotEmpty;
+
+  /// Captures an opened existing record into the Recents list. No-op for new
+  /// drafts (no id yet) or until the [DocType] has resolved (needed for the
+  /// display title). Records once per record per mount.
+  void _maybeRecordRecent(Document base, DocType? type) {
+    if (widget.documentName == null || base.id.isEmpty || type == null) return;
+    final key = '${base.docType}::${base.id}';
+    if (_recordedKey == key) return;
+    _recordedKey = key;
+    final entry = RecentEntry(
+      docType: base.docType,
+      docId: base.id,
+      title: MetadataDisplay.titleFor(type, base),
+      subtitle: MetadataDisplay.subtitleFor(type, base),
+      openedAt: DateTime.now(),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(recentsProvider.notifier).record(entry);
+    });
+  }
 
   Document _apply(Document base) {
     if (_changes.isEmpty && _childChanges.isEmpty) return base;
@@ -194,6 +221,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
         error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
         data: (engine) {
           final base = fetched ?? _emptyDoc();
+          _maybeRecordRecent(base, metaAsync.valueOrNull?.docType);
           final doc = _apply(base);
           final isSubmittable =
               metaAsync.valueOrNull?.docType.isSubmittable ?? false;

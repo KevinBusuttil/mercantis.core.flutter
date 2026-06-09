@@ -12,12 +12,14 @@ export 'src/providers/attachment_providers.dart';
 export 'src/providers/import_export_providers.dart';
 export 'src/providers/notification_providers.dart';
 export 'src/providers/audit_providers.dart';
+export 'src/providers/recents_providers.dart';
 
 // Shell
 export 'src/shell/breakpoints.dart';
 export 'src/shell/adaptive_shell.dart';
 export 'src/shell/responsive_scaffold.dart';
 export 'src/shell/app_navigation_registry.dart';
+export 'src/shell/recents_store.dart';
 
 // Workspaces
 export 'src/workspace/workspace_descriptor.dart';
@@ -54,6 +56,7 @@ export 'src/widgets/import_export_menu.dart';
 export 'src/widgets/print_record_button.dart';
 export 'src/widgets/notification_inbox_view.dart';
 export 'src/widgets/document_timeline_view.dart';
+export 'src/widgets/recents/recents_view.dart';
 export 'src/widgets/link_picker_field.dart';
 export 'src/widgets/child_table_field.dart';
 export 'src/widgets/search/global_search.dart';
