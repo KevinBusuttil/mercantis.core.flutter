@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/attachments_panel.dart';
+import '../widgets/document_timeline_view.dart';
 import '../widgets/print_record_button.dart';
 import 'command_bar_view.dart';
 import 'customize_fields_sheet.dart';
@@ -102,7 +103,7 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
               controller: _tabs,
               children: [
                 widget.child,
-                _TimelineTab(documentName: widget.documentName),
+                DocumentTimelineView(documentId: widget.documentName),
                 AttachmentsPanel(
                   documentId: widget.documentName,
                   docType: widget.docTypeName,
@@ -113,19 +114,6 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
         ],
       ),
     );
-  }
-}
-
-class _TimelineTab extends StatelessWidget {
-  const _TimelineTab({required this.documentName});
-  final String? documentName;
-
-  @override
-  Widget build(BuildContext context) {
-    if (documentName == null) {
-      return const Center(child: Text('Save the document to see activity'));
-    }
-    return const Center(child: Text('No activity yet'));
   }
 }
 

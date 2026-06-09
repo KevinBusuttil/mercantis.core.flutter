@@ -55,7 +55,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Generic form view | 🟡 | ~13 of 34 field types real; rest fall back to text editor |
 | Date/time & media/attachment field widgets | 🟡 | **date, time & dateTime pickers now real**; file/attach, signature, color, barcode still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
-| Record workspace chrome (Form/Timeline/Attachments) | 🟡 | **Attachments tab now live** (`AttachmentsPanel`); Timeline tab still a placeholder |
+| Record workspace chrome (Form/Timeline/Attachments) | ✅ | Attachments tab (`AttachmentsPanel`) + **Timeline tab now live** (`DocumentTimelineView` over the audit log: created/updated events with field diffs) |
 | Form builder (palette/canvas/inspector) | ✅ | editable — add / rename / toggle-required / reorder / delete **custom fields**, persisted via `CustomField` on Save (cache invalidated so the form picks them up); base fields shown read-only |
 | Command palette / global search | ✅ | Cmd-K |
 | Workspaces / dashboard cards | 🟡 | cards render; need real DashboardEngine data via the grid |
