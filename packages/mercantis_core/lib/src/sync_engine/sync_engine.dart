@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:sqflite_common/sqflite.dart';
 import '../document_engine/document.dart';
 import '../metadata/metadata_registry.dart';

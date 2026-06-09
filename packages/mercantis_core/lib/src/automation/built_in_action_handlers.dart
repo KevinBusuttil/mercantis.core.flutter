@@ -124,7 +124,6 @@ class ValidateHandler implements AutomationActionHandler {
     Map<String, dynamic> parameters,
     AutomationContext context,
   ) async {
-    final message = parameters['message']?.toString() ?? 'Validation failed';
     final condition = parameters['condition']?.toString();
     if (condition == null) return;
     // Validation is typically handled by the validation pipeline

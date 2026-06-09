@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:sqflite_common/sqflite.dart';
 import '../metadata/doc_type.dart';
 import '../metadata/field_definition.dart';

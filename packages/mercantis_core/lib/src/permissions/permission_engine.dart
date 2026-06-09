@@ -1,6 +1,5 @@
 import '../metadata/doc_type.dart';
 import '../metadata/field_definition.dart';
-import '../metadata/permission_rule.dart';
 import '../document_engine/document.dart';
 import '../expression_engine/expression_evaluator.dart';
 import '../document_engine/validation_pipeline.dart';

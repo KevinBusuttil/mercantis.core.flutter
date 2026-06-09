@@ -9,7 +9,6 @@ import '../providers/core_providers.dart';
 import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
-import '../widgets/status_chip.dart';
 import 'generic_form_view.dart';
 
 final _docsProvider =

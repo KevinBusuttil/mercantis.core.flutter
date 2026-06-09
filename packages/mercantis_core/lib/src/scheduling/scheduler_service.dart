@@ -8,7 +8,6 @@ class SchedulerService {
   final Duration tickInterval;
   final Map<String, ScheduledTask> _tasks = {};
   Timer? _timer;
-  DateTime? _lastTick;
 
   SchedulerService(this._db, {this.tickInterval = const Duration(seconds: 60)});
 
@@ -46,7 +45,6 @@ class SchedulerService {
         }
       }
     }
-    _lastTick = now;
   }
 
   Future<bool> _isDue(ScheduledTask task, DateTime now) async {

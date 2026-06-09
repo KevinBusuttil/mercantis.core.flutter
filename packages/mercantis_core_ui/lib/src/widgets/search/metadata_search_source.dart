@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mercantis_core/mercantis_core.dart';
 import '../../metadata/metadata_display.dart';
 import '../../providers/core_providers.dart';
-import '../../workspace/workspace_descriptor.dart';
 import '../../workspace/workspace_registry.dart';
 import 'global_search_service.dart';
 

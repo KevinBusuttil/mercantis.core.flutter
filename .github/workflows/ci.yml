@@ -22,10 +22,12 @@ jobs:
           cache: true
       - run: flutter --version
       # Resolve the whole pub workspace once, then analyze each member package.
+      # Warnings are fatal (the lint backlog is cleaned); infos stay non-fatal
+      # while the ~25 pre-existing info-level lints are burned down separately.
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
+      - run: flutter analyze --no-fatal-infos
         working-directory: packages/mercantis_core
-      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
+      - run: flutter analyze --no-fatal-infos
         working-directory: packages/mercantis_core_ui
 
   test:

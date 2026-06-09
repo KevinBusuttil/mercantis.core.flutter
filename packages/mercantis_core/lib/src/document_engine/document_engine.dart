@@ -32,9 +32,7 @@ typedef ValidationException = DocumentEngineError;
 class DocumentEngine {
   final Database _db;
   final MetadataRegistry _registry;
-  final MetaComposer _metaComposer;
   final PermissionEngine _permissionEngine;
-  final WorkflowEngine _workflowEngine;
   final ExpressionEvaluator _expressionEvaluator;
   final NamingService _namingService;
   final SyncEngine _syncEngine;
@@ -61,9 +59,7 @@ class DocumentEngine {
     List<DocumentInterceptor> interceptors = const [],
   })  : _db = database,
         _registry = registry,
-        _metaComposer = metaComposer,
         _permissionEngine = permissionEngine,
-        _workflowEngine = workflowEngine,
         _expressionEvaluator = expressionEvaluator,
         _namingService = namingService,
         _syncEngine = syncEngine,

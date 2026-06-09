@@ -3,7 +3,6 @@ import 'package:sqflite_common/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../document_engine/document.dart';
 import '../expression_engine/expression_evaluator.dart';
-import 'workflow_transition_history.dart';
 
 class WorkflowState {
   final String name;

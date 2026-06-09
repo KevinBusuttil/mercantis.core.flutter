@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:sqflite_common/sqflite.dart';
-import 'doc_type.dart';
 import 'field_definition.dart';
 import 'metadata_registry.dart';
 import 'resolved_meta.dart';
