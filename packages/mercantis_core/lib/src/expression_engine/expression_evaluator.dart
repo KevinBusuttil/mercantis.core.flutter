@@ -118,7 +118,6 @@ class ExpressionEvaluator {
       TokenType.minus => switch (value) {
           int v => -v,
           double v => -v,
-          num v => -v,
           _ => throw EvaluationError('Cannot negate non-numeric value: $value'),
         },
       _ => throw EvaluationError('Unknown unary operator: $op'),

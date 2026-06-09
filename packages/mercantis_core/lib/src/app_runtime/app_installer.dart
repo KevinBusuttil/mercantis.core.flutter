@@ -5,7 +5,6 @@ import '../metadata/metadata_registry.dart';
 import '../metadata/schema_validator.dart';
 import '../sync_engine/sync_engine.dart';
 import '../sync_engine/mutation_record.dart';
-import '../notifications/event_emitter.dart';
 import 'app_manifest.dart';
 
 class AppInstaller {

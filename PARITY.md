@@ -52,8 +52,8 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Surface | Status | Notes |
 |---------|:----:|-------|
 | Adaptive shell / navigation / routing | ✅ | phone/tablet/desktop breakpoints |
-| Generic form view | 🟡 | ~13 of 34 field types real; rest fall back to text editor |
-| Date/time & media/attachment field widgets | 🟡 | **date, time & dateTime pickers now real**; file/attach, signature, color, barcode still fall back to text |
+| Generic form view | 🟡 | ~16 of 34 field types real; rest fall back to text editor |
+| Date/time & media/attachment field widgets | 🟡 | **date, time, dateTime pickers + signature, color, barcode now real**; file/attach (and code/geolocation/rating/duration) still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
 | Record workspace chrome (Form/Timeline/Attachments) | ✅ | Attachments tab (`AttachmentsPanel`) + **Timeline tab now live** (`DocumentTimelineView` over the audit log: created/updated events with field diffs) |
 | Form builder (palette/canvas/inspector) | ✅ | editable — add / rename / toggle-required / reorder / delete **custom fields**, persisted via `CustomField` on Save (cache invalidated so the form picks them up); base fields shown read-only |
@@ -65,9 +65,9 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | **Dashboard grid** | ✅ | `DashboardResultGrid` renders a `DashboardResult` (count/sum/list/shortcut/chart, per-widget error isolation) |
 | **Attachments UI** | ✅ | `AttachmentsPanel` (list/upload/delete via `AttachmentManager`, file_picker) wired into the record Attachments tab |
 | **Import / Export UI** | ✅ | `ImportExportMenu` (export CSV/JSON, import file via file_picker → report) in the list trailing actions |
-| **Print / PDF UI** | 🟡 | `PrintRecordButton` renders a record (auto default format) to a plain-text preview via `PrintService`; native print/PDF-share pending a plugin |
+| **Print / PDF UI** | ✅ | `PrintRecordButton` renders a record (auto default format) to a real PDF via `PrintService` (pure-Dart `pdf` renderer) and hands it to the `printing` plugin — native print/preview (`layoutPdf`) + share sheet (`sharePdf`) |
 | Settings screen | 🟡 | route is a "coming soon" stub |
-| Recents | ❌ | |
+| **Recents** | ✅ | `RecentsView` over `recentsProvider`/`RecentsStore` — opened records persisted in a `ui_recents` table (MRU, de-duped, capped at 20), recorded from `GenericFormView`; routes back on tap |
 
 ## Sequenced plan (engine done → UI capstones)
 

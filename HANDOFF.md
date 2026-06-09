@@ -9,8 +9,9 @@ threads.
 - `mercantis.core.flutter` — the engine + UI shell (`packages/mercantis_core`,
   `packages/mercantis_core_ui`); a Dart **pub workspace**. Hub depends on Core
   via a **pinned git ref**, so Core changes only reach Hub when that ref bumps.
-- Working branch (both): `claude/elegant-cori-9fb2hj`. Most work has been
-  merged to `main` via PRs; new work lands on this branch → PR → merge.
+- Working branch (both): `claude/blissful-goldberg-12z7co` (the previous
+  `claude/elegant-cori-9fb2hj` work is merged to `main`). New work lands on
+  this branch → PR → merge.
 
 ## CI (both repos have `.github/workflows/ci.yml`)
 - Jobs: `flutter analyze` + `flutter test` per package.
@@ -27,22 +28,26 @@ threads.
   derivation, reports (incl. Trial Balance + AR/AP aging), guided payments,
   onboarding seeder, settings + data-driven operator, POS till, shop-floor.
 - **Core**: every engine→UI binding done — report viewer, dashboard grid,
-  date/time field widgets, attachments, import/export, print preview,
-  notification inbox; form-builder save; live Timeline tab.
+  date/time + signature/color/barcode field widgets, attachments,
+  import/export, **native PDF print+share**, notification inbox; form-builder
+  save; live Timeline tab; **Recents**.
 
 ## Open threads
-1. **Confirm Core CI** for the Timeline-tab commit (`5fa367a`, "live Timeline
-   tab over the audit log") is green; open/merge a PR for this branch if needed.
-2. **Recents** screen (Core UI shell) — no new deps.
-3. **Native print/PDF share** — currently a plain-text preview
-   (`PrintRecordButton`); needs a printing/share plugin for real PDF output.
-4. **Field widgets**: `signature`, `color`, `barcode` still fall back to text
-   (need plugins). `date/time/dateTime` are done.
-5. **`mercantis_core` lint cleanup** (~20 unused-import/field warnings), then
-   restore `--fatal-warnings` in Core CI.
+1. ✅ **Timeline-tab** (`5fa367a`) merged to `main` (PR #40, green).
+2. ✅ **Recents** — `RecentsView`/`recentsProvider`/`RecentsStore` (persisted
+   `ui_recents` table, MRU/capped/de-duped), recorded from `GenericFormView`.
+3. ✅ **Native print/PDF share** — `PrintRecordButton` renders real PDF bytes
+   and drives the `printing` plugin (`layoutPdf` print/preview + `sharePdf`).
+4. 🟡 **Field widgets**: `signature`, `color`, `barcode` are now real
+   (signature/color hand-rolled; barcode via `barcode_widget`). Still falling
+   back to text: `attach`/`attachImage` (file), `code`, `rating`, `duration`,
+   `geolocation`.
+5. ✅ **`mercantis_core` lint cleanup** — 18 warnings cleared across both
+   packages; Core CI restored to `flutter analyze --no-fatal-infos` (warnings
+   fatal again). ~25 info-level lints remain (non-fatal) for a later burndown.
 
 ## How to resume
-> Continue the mercantis Flutter port on branch `claude/elegant-cori-9fb2hj`.
+> Continue the mercantis Flutter port on branch `claude/blissful-goldberg-12z7co`.
 > Read both repos' `PARITY.md` + this `HANDOFF.md`. Push commits and confirm CI
 > (GitHub MCP tools) goes green for each change. Re-subscribe to any open PR you
 > want watched.
