@@ -38,13 +38,29 @@ threads.
    `ui_recents` table, MRU/capped/de-duped), recorded from `GenericFormView`.
 3. ✅ **Native print/PDF share** — `PrintRecordButton` renders real PDF bytes
    and drives the `printing` plugin (`layoutPdf` print/preview + `sharePdf`).
-4. 🟡 **Field widgets**: `signature`, `color`, `barcode` are now real
-   (signature/color hand-rolled; barcode via `barcode_widget`). Still falling
-   back to text: `attach`/`attachImage` (file), `code`, `rating`, `duration`,
-   `geolocation`.
+4. 🟡 **Field widgets**: `signature`, `color`, `barcode`, `rating`, `duration`,
+   `code` are now real. Still falling back to text: `attach`/`attachImage`
+   (file) and `geolocation`.
 5. ✅ **`mercantis_core` lint cleanup** — 18 warnings cleared across both
    packages; Core CI restored to `flutter analyze --no-fatal-infos` (warnings
    fatal again). ~25 info-level lints remain (non-fatal) for a later burndown.
+
+### Newer threads (this session)
+6. ✅ **WorkflowEngine emits `WorkflowTransitionEvent`** (shared emitter), wired
+   through the UI provider. Enables the Hub's Work Order → completion Stock
+   Entry **auto-post** (`ManufacturingDerivationService`, Hub repo) — its end-to-
+   end firing in production needs the Hub's pinned Core ref bumped to include
+   this commit.
+7. **Hub-side** (see `mercantis.hub.flutter`): Item child tables + Supplier
+   Quotation, Sales/Inventory dashboard de-mock — all landed.
+
+### Still open
+- Core **Settings screen** (still a "coming soon" stub); `attach`/`geolocation`
+  field widgets (need plugins).
+- Hub: de-mock the bespoke custom screens (Sales Orders, Customer Acct, Routes,
+  Driver, Low Stock); `NumberingSeries`; real auth.
+- **Core ref bump** in Hub `pubspec.yaml` once the Core workflow-event change
+  merges, to activate WO auto-post in production.
 
 ## How to resume
 > Continue the mercantis Flutter port on branch `claude/blissful-goldberg-12z7co`.

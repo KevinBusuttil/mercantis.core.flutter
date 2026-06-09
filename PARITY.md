@@ -23,7 +23,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Validation pipeline | ✅ | ✅ | required/unique/link/rule stages |
 | Storage + migrations | ✅ | ✅ | sqflite_common |
 | Permissions (doctype/field/row) | ✅ | ✅ | |
-| Workflow engine | ✅ | ✅ | role + condition guards |
+| Workflow engine | ✅ | ✅ | role + condition guards; **emits `WorkflowTransitionEvent`** on transition (optional shared emitter) |
 | Expression engine | ✅ | ✅ | recursive-descent, LRU cache |
 | Sync engine + conflict resolution | ✅ | ✅ | LWW / VCM / append-only |
 | **FileSystemCloudAdapter** (ADR-047) | ✅ | ✅ | peer-to-peer shared-folder sync |
@@ -52,8 +52,8 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Surface | Status | Notes |
 |---------|:----:|-------|
 | Adaptive shell / navigation / routing | ✅ | phone/tablet/desktop breakpoints |
-| Generic form view | 🟡 | ~16 of 34 field types real; rest fall back to text editor |
-| Date/time & media/attachment field widgets | 🟡 | **date, time, dateTime pickers + signature, color, barcode now real**; file/attach (and code/geolocation/rating/duration) still fall back to text |
+| Generic form view | 🟡 | ~19 of 34 field types real; rest fall back to text editor |
+| Date/time & media/attachment field widgets | 🟡 | **date, time, dateTime, signature, color, barcode, rating, duration & code now real**; file/attach (`attach`/`attachImage`) + `geolocation` still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
 | Record workspace chrome (Form/Timeline/Attachments) | ✅ | Attachments tab (`AttachmentsPanel`) + **Timeline tab now live** (`DocumentTimelineView` over the audit log: created/updated events with field diffs) |
 | Form builder (palette/canvas/inspector) | ✅ | editable — add / rename / toggle-required / reorder / delete **custom fields**, persisted via `CustomField` on Save (cache invalidated so the form picks them up); base fields shown read-only |
