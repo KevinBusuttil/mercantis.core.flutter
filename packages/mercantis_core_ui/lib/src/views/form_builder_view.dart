@@ -22,7 +22,7 @@ class _Draft {
     required this.isCustom,
     this.required = false,
     this.options,
-    this.customId,
+    this.source,
   });
 
   String key;
@@ -31,7 +31,10 @@ class _Draft {
   bool required;
   String? options;
   final bool isCustom;
-  final String? customId;
+
+  /// The full original [FieldDefinition] for an existing custom field, so a
+  /// re-save preserves props the builder doesn't edit (defaults, options…).
+  final FieldDefinition? source;
 }
 
 class FormBuilderView extends ConsumerStatefulWidget {
@@ -44,7 +47,6 @@ class FormBuilderView extends ConsumerStatefulWidget {
 
 class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
   final List<_Draft> _drafts = [];
-  final Set<String> _removedCustomIds = {};
   String? _selectedKey;
   bool _loaded = false;
   bool _dirty = false;
@@ -52,7 +54,7 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
   int _seq = 0;
 
   void _seed(ResolvedMeta meta, List<CustomField> customs) {
-    final idByKey = {for (final c in customs) c.fieldDefinition.key: c.id};
+    final byKey = {for (final c in customs) c.fieldDefinition.key: c};
     _drafts
       ..clear()
       ..addAll([
@@ -64,10 +66,9 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
             required: f.required,
             options: f.options,
             isCustom: f.isCustomField,
-            customId: idByKey[f.key],
+            source: byKey[f.key]?.fieldDefinition,
           ),
       ]);
-    _removedCustomIds.clear();
     _selectedKey = null;
     _dirty = false;
   }
@@ -84,7 +85,6 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
         label: 'New ${ft.name}',
         type: ft,
         isCustom: true,
-        customId: 'cf-${widget.docTypeName}-${DateTime.now().microsecondsSinceEpoch}-$_seq',
       ));
       _selectedKey = key;
       _dirty = true;
@@ -94,7 +94,6 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
   void _delete(_Draft d) {
     if (!d.isCustom) return;
     setState(() {
-      if (d.customId != null) _removedCustomIds.add(d.customId!);
       _drafts.removeWhere((x) => x.key == d.key);
       if (_selectedKey == d.key) _selectedKey = null;
       _dirty = true;
@@ -105,25 +104,32 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
     setState(() => _saving = true);
     try {
       final db = (await ref.read(mercantisDatabaseProvider.future)).db;
-      for (final id in _removedCustomIds) {
-        await CustomField.delete(db, id);
+      // Rebuild the custom-field set so the persisted rowid order matches the
+      // canvas: drop every existing custom field, then re-insert the current
+      // drafts in order. Inserting in canvas order assigns ascending rowids, so
+      // `insertAfter` chains (incl. custom→custom) replay correctly on reload.
+      for (final c in await CustomField.forDocType(db, widget.docTypeName)) {
+        await CustomField.delete(db, c.id);
       }
       String? prevKey;
       for (final d in _drafts) {
         if (d.isCustom) {
+          final fd = d.source != null
+              ? d.source!.copyWith(label: d.label, required: d.required)
+              : FieldDefinition(
+                  key: d.key,
+                  label: d.label,
+                  type: d.type,
+                  required: d.required,
+                  options: d.options,
+                );
           await CustomField.save(
             db,
             CustomField(
-              id: d.customId!,
+              id: '', // empty → fresh row appended in canvas order
               docTypeId: widget.docTypeName,
               insertAfter: prevKey,
-              fieldDefinition: FieldDefinition(
-                key: d.key,
-                label: d.label,
-                type: d.type,
-                required: d.required,
-                options: d.options,
-              ),
+              fieldDefinition: fd,
             ),
           );
         }
