@@ -9,6 +9,7 @@ import '../shell/recents_store.dart';
 import '../widgets/child_table_field.dart';
 import '../widgets/fields/barcode_field.dart';
 import '../widgets/fields/color_field.dart';
+import '../widgets/fields/scalar_field_widgets.dart';
 import '../widgets/fields/signature_field.dart';
 import '../widgets/link_picker_field.dart';
 import 'record_workspace_chrome.dart';
@@ -787,6 +788,30 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.barcode:
         return BarcodeField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.rating:
+        return RatingField(
+          label: _label,
+          required: field.required,
+          value: value,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.duration:
+        return DurationField(
+          label: _label,
+          required: field.required,
+          value: value,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.code:
+        return CodeField(
           label: _label,
           required: field.required,
           value: value as String?,
