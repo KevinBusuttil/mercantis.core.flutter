@@ -32,7 +32,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Automation runner + built-in actions | ✅ | ✅ | |
 | **Scheduled rules** (ADR-041) | ✅ | ✅ | `onSchedule` fan-out |
 | Notifications / EventEmitter | ✅ | ✅ | events ✅ |
-| **Notification inbox + log** (ADR-048) | ✅ | ✅ | persistent log + reader API (`notification_inbox.dart`); **UI ❌** |
+| **Notification inbox + log** (ADR-048) | ✅ | ✅ | persistent log + reader API; **UI ✅** (`NotificationInboxView`) |
 | Scheduling (cron, tick) | ✅ | ✅ | |
 | Customization (custom fields, property setters) | ✅ | ✅ | |
 | App runtime (manifest, installer) | ✅ | ✅ | |
@@ -60,7 +60,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Command palette / global search | ✅ | Cmd-K |
 | Workspaces / dashboard cards | 🟡 | cards render; need real DashboardEngine data via the grid |
 | Approvals inbox | ✅ | |
-| **Notification inbox** | ❌ | engine done; reader UI missing (only approvals inbox exists) |
+| **Notification inbox** | ✅ | `NotificationInboxView` (list, unread styling, mark-read/mark-all, swipe-delete) + providers, exported from core_ui |
 | **Report viewer** | ✅ | `ReportResultView` renders a `ReportResult` as a table + Copy-CSV (exported from core_ui) |
 | **Dashboard grid** | ✅ | `DashboardResultGrid` renders a `DashboardResult` (count/sum/list/shortcut/chart, per-widget error isolation) |
 | **Attachments UI** | ✅ | `AttachmentsPanel` (list/upload/delete via `AttachmentManager`, file_picker) wired into the record Attachments tab |
