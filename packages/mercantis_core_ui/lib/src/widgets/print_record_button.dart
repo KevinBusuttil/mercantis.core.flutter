@@ -1,17 +1,16 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mercantis_core/mercantis_core.dart';
+import 'package:printing/printing.dart';
 
 import '../providers/core_providers.dart';
 import '../providers/import_export_providers.dart';
 
-/// App-bar action that renders a record to a plain-text print preview using a
-/// default [PrintFormat] auto-built from the DocType's fields. (PDF bytes are
-/// available from the same `PrintService.render` for a future share/print
-/// integration.)
+enum _PrintAction { print, share }
+
+/// App-bar action that renders a record to a real PDF (via the core
+/// [PrintService]'s pure-Dart `pdf` renderer) and hands it to the platform's
+/// native print/preview dialog or share sheet using the `printing` plugin.
 class PrintRecordButton extends ConsumerWidget {
   const PrintRecordButton({super.key, required this.docType, required this.documentId});
 
@@ -29,14 +28,34 @@ class PrintRecordButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final enabled = documentId != null && documentId!.isNotEmpty;
-    return IconButton(
+    return PopupMenuButton<_PrintAction>(
       icon: const Icon(Icons.print_outlined),
-      tooltip: 'Print preview',
-      onPressed: enabled ? () => _print(context, ref) : null,
+      tooltip: 'Print',
+      enabled: enabled,
+      onSelected: (action) => _run(context, ref, action),
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: _PrintAction.print,
+          child: ListTile(
+            leading: Icon(Icons.print_outlined),
+            title: Text('Print…'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: _PrintAction.share,
+          child: ListTile(
+            leading: Icon(Icons.ios_share),
+            title: Text('Share PDF'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
     );
   }
 
-  Future<void> _print(BuildContext context, WidgetRef ref) async {
+  Future<void> _run(
+      BuildContext context, WidgetRef ref, _PrintAction action) async {
     try {
       final engine = await ref.read(documentEngineProvider.future);
       final doc = await engine.fetch(docType, documentId!);
@@ -65,35 +84,22 @@ class PrintRecordButton extends ConsumerWidget {
       final result = await service.render(
         formatId: format.id,
         document: doc,
-        kind: PrintOutputKind.plainText,
+        kind: PrintOutputKind.pdf,
       );
-      final text = utf8.decode(result.bytes);
       if (!context.mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Print preview · ${meta.name}'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                text,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: text));
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Copied')));
-              },
-              child: const Text('Copy'),
-            ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-          ],
-        ),
-      );
+
+      switch (action) {
+        case _PrintAction.print:
+          await Printing.layoutPdf(
+            onLayout: (_) async => result.bytes,
+            name: result.suggestedFileName,
+          );
+        case _PrintAction.share:
+          await Printing.sharePdf(
+            bytes: result.bytes,
+            filename: result.suggestedFileName,
+          );
+      }
     } catch (e) {
       _snack(context, 'Print failed: $e');
     }
