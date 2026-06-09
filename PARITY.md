@@ -55,7 +55,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | Generic form view | 🟡 | ~13 of 34 field types real; rest fall back to text editor |
 | Date/time & media/attachment field widgets | 🟡 | **date, time & dateTime pickers now real**; file/attach, signature, color, barcode still fall back to text |
 | Generic list views | ✅ | no bulk/multi-select |
-| Record workspace chrome (Form/Timeline/Attachments) | 🟡 | Timeline & Attachments tabs are placeholders (no-op buttons) |
+| Record workspace chrome (Form/Timeline/Attachments) | 🟡 | **Attachments tab now live** (`AttachmentsPanel`); Timeline tab still a placeholder |
 | Form builder (palette/canvas/inspector) | 🟡 | **save not wired** to DocumentEngine |
 | Command palette / global search | ✅ | Cmd-K |
 | Workspaces / dashboard cards | 🟡 | cards render; need real DashboardEngine data via the grid |
@@ -63,7 +63,7 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | **Notification inbox** | ❌ | engine done; reader UI missing (only approvals inbox exists) |
 | **Report viewer** | ✅ | `ReportResultView` renders a `ReportResult` as a table + Copy-CSV (exported from core_ui) |
 | **Dashboard grid** | ✅ | `DashboardResultGrid` renders a `DashboardResult` (count/sum/list/shortcut/chart, per-widget error isolation) |
-| **Attachments UI** | ❌ | list/upload bound to the attachment engine |
+| **Attachments UI** | ✅ | `AttachmentsPanel` (list/upload/delete via `AttachmentManager`, file_picker) wired into the record Attachments tab |
 | **Import / Export UI** | ❌ | bound to the import/export engine |
 | **Print / PDF UI** | ❌ | print action + format picker bound to the print service |
 | Settings screen | 🟡 | route is a "coming soon" stub |

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/attachments_panel.dart';
 import 'command_bar_view.dart';
 import 'customize_fields_sheet.dart';
 
@@ -97,7 +98,10 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
               children: [
                 widget.child,
                 _TimelineTab(documentName: widget.documentName),
-                _AttachmentsTab(documentName: widget.documentName),
+                AttachmentsPanel(
+                  documentId: widget.documentName,
+                  docType: widget.docTypeName,
+                ),
               ],
             ),
           ),
@@ -120,31 +124,3 @@ class _TimelineTab extends StatelessWidget {
   }
 }
 
-class _AttachmentsTab extends StatelessWidget {
-  const _AttachmentsTab({required this.documentName});
-  final String? documentName;
-
-  @override
-  Widget build(BuildContext context) {
-    if (documentName == null) {
-      return const Center(
-          child: Text('Save the document to add attachments'));
-    }
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.attach_file, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text('No attachments', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.add),
-            label: const Text('Add Attachment'),
-          ),
-        ],
-      ),
-    );
-  }
-}
