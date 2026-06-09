@@ -10,6 +10,7 @@ export 'src/theme/tokens/brand_colors.dart';
 export 'src/providers/core_providers.dart';
 export 'src/providers/attachment_providers.dart';
 export 'src/providers/import_export_providers.dart';
+export 'src/providers/notification_providers.dart';
 
 // Shell
 export 'src/shell/breakpoints.dart';
@@ -50,6 +51,7 @@ export 'src/widgets/dashboard_result_grid.dart';
 export 'src/widgets/attachments_panel.dart';
 export 'src/widgets/import_export_menu.dart';
 export 'src/widgets/print_record_button.dart';
+export 'src/widgets/notification_inbox_view.dart';
 export 'src/widgets/link_picker_field.dart';
 export 'src/widgets/child_table_field.dart';
 export 'src/widgets/search/global_search.dart';
