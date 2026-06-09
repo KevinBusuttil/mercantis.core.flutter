@@ -8,6 +8,7 @@ import '../panes/responsive_split.dart';
 import '../providers/core_providers.dart';
 import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/import_export_menu.dart';
 import '../widgets/status_chip.dart';
 import 'generic_form_view.dart';
 
@@ -194,6 +195,14 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       },
       onNew: () => context.go('/form/${type.id}/new'),
       newLabel: 'New ${type.name}',
+      trailingActions: [
+        ImportExportMenu(
+          docType: type.id,
+          onChanged: () => ref.invalidate(
+            _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
+          ),
+        ),
+      ],
     );
   }
 

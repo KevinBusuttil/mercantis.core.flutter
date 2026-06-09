@@ -64,8 +64,8 @@ Legend: ✅ parity · 🟡 partial / stubbed · ❌ missing
 | **Report viewer** | ✅ | `ReportResultView` renders a `ReportResult` as a table + Copy-CSV (exported from core_ui) |
 | **Dashboard grid** | ✅ | `DashboardResultGrid` renders a `DashboardResult` (count/sum/list/shortcut/chart, per-widget error isolation) |
 | **Attachments UI** | ✅ | `AttachmentsPanel` (list/upload/delete via `AttachmentManager`, file_picker) wired into the record Attachments tab |
-| **Import / Export UI** | ❌ | bound to the import/export engine |
-| **Print / PDF UI** | ❌ | print action + format picker bound to the print service |
+| **Import / Export UI** | ✅ | `ImportExportMenu` (export CSV/JSON, import file via file_picker → report) in the list trailing actions |
+| **Print / PDF UI** | 🟡 | `PrintRecordButton` renders a record (auto default format) to a plain-text preview via `PrintService`; native print/PDF-share pending a plugin |
 | Settings screen | 🟡 | route is a "coming soon" stub |
 | Recents | ❌ | |
 
