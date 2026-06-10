@@ -13,6 +13,7 @@ export 'src/providers/import_export_providers.dart';
 export 'src/providers/notification_providers.dart';
 export 'src/providers/audit_providers.dart';
 export 'src/providers/recents_providers.dart';
+export 'src/providers/preferences_providers.dart';
 
 // Shell
 export 'src/shell/breakpoints.dart';
@@ -86,3 +87,4 @@ export 'src/views/metadata_list_view.dart';
 export 'src/views/record_collection_view.dart';
 export 'src/views/record_workspace_chrome.dart';
 export 'src/views/customize_fields_sheet.dart';
+export 'src/views/settings_view.dart';
