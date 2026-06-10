@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -46,6 +48,24 @@ final resolvedMetaProvider =
   }
 });
 
+/// A stable, per-install device identifier. Generated once and persisted, it
+/// keys the per-device naming counter blocks (ADR-042) and the sync adapter's
+/// per-device change log — so two devices sharing one company never collide on
+/// document numbers or on their sync streams. Must be unique per physical
+/// install; never hardcode it.
+final deviceIdProvider = FutureProvider<String>((ref) async {
+  const key = 'core.device_id';
+  final prefs = await SharedPreferences.getInstance();
+  var id = prefs.getString(key);
+  if (id == null || id.isEmpty) {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
+    id = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    await prefs.setString(key, id);
+  }
+  return id;
+});
+
 final namingServiceProvider = Provider<NamingService>((ref) => NamingService());
 
 final eventEmitterProvider = Provider<EventEmitter>((_) => EventEmitter());
@@ -86,6 +106,7 @@ final documentEngineProvider = FutureProvider<DocumentEngine>((ref) async {
   final evaluator = ref.watch(expressionEvaluatorProvider);
   final workflow = await ref.watch(workflowEngineProvider.future);
   final sync = await ref.watch(syncEngineProvider.future);
+  final deviceId = await ref.watch(deviceIdProvider.future);
   return DocumentEngine(
     database: db.db,
     registry: registry,
@@ -96,7 +117,7 @@ final documentEngineProvider = FutureProvider<DocumentEngine>((ref) async {
     namingService: naming,
     syncEngine: sync,
     emitter: emitter,
-    deviceId: 'local-device',
+    deviceId: deviceId,
     userId: 'local-user',
     interceptors: ref.watch(documentInterceptorsProvider),
   );
