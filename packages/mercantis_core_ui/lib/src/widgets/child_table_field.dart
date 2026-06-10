@@ -940,7 +940,7 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
         final opts =
             (f.options ?? '').split('\n').where((o) => o.isNotEmpty).toList();
         return DropdownButtonFormField<String>(
-          value: value as String?,
+          initialValue: value as String?,
           decoration: decoration,
           items: opts
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
