@@ -87,4 +87,54 @@ class CounterBlockAllocator {
       return blockStart;
     });
   }
+
+  /// The current high-water mark for [series] — the highest number reserved
+  /// across all devices. Returns 0 when the series has minted nothing yet, so
+  /// the next number handed out will be `peek + 1`. Read-only.
+  Future<int> peek(Database db, String series) async {
+    final rows = await db.query(
+      'naming_block_allocations',
+      columns: ['allocated_through'],
+      where: 'series = ?',
+      whereArgs: [series],
+    );
+    if (rows.isEmpty) return 0;
+    return rows.first['allocated_through'] as int;
+  }
+
+  /// Force the next number minted for [series] to be [nextNumber]: sets the
+  /// shared high-water mark to `nextNumber - 1` and clears any reserved
+  /// per-device blocks so the following [next] reserves a fresh block starting
+  /// at [nextNumber]. Use to seed a migrated legacy sequence or reset a series
+  /// at year start. [nextNumber] must be >= 1.
+  ///
+  /// Lowering the counter below ids already issued can mint duplicates; callers
+  /// own that decision.
+  Future<void> setNextNumber(Database db, String series, int nextNumber) {
+    if (nextNumber < 1) {
+      throw ArgumentError.value(nextNumber, 'nextNumber', 'must be >= 1');
+    }
+    final through = nextNumber - 1;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'naming_block_allocations',
+        where: 'series = ?',
+        whereArgs: [series],
+      );
+      if (existing.isEmpty) {
+        await txn.insert('naming_block_allocations',
+            {'series': series, 'allocated_through': through});
+      } else {
+        await txn.update(
+          'naming_block_allocations',
+          {'allocated_through': through},
+          where: 'series = ?',
+          whereArgs: [series],
+        );
+      }
+      // Drop reserved blocks so every device re-reserves from the new mark.
+      await txn.delete('naming_counter_blocks',
+          where: 'series = ?', whereArgs: [series]);
+    });
+  }
 }
