@@ -46,31 +46,45 @@ class NamingSeriesStrategy implements NamingStrategy {
   @override
   Future<String> resolve(
       DocType docType, Document document, NamingContext context) async {
-    final now = DateTime.now();
-    var result = pattern;
-    result = result.replaceAll('.YYYY.', '.${now.year}.');
-    result = result.replaceAll('.YY.', '.${now.year.toString().substring(2)}.');
-    result = result.replaceAll('.MM.', '.${now.month.toString().padLeft(2, '0')}.');
-    result = result.replaceAll('.DD.', '.${now.day.toString().padLeft(2, '0')}.');
-
-    // Resolve hash placeholder via a per-device counter block (ADR-042),
+    // Resolve the hash placeholder via a per-device counter block (ADR-042),
     // keyed on the resolved prefix so each series (and year) sequences
     // independently and offline devices never collide.
-    final hashMatch = RegExp(r'\.#+\.?$').firstMatch(result);
-    if (hashMatch != null) {
-      final hashPart = hashMatch.group(0)!;
-      final digits = hashPart.replaceAll(RegExp('[^#]'), '').length;
-      final prefix = result.substring(0, hashMatch.start);
+    final series = expandSeries(pattern);
+    if (series == null) return expandDates(pattern, DateTime.now());
 
-      final n = await allocator.next(
-        context.database,
-        prefix,
-        context.deviceId,
-        seedFloor: (txn) => _maxExistingSuffix(txn, prefix),
-      );
-      result = '$prefix${n.toString().padLeft(digits, '0')}';
-    }
-    return result;
+    final n = await allocator.next(
+      context.database,
+      series.prefix,
+      context.deviceId,
+      seedFloor: (txn) => _maxExistingSuffix(txn, series.prefix),
+    );
+    return '${series.prefix}${n.toString().padLeft(series.width, '0')}';
+  }
+
+  /// Substitute the date placeholders (`.YYYY.`, `.YY.`, `.MM.`, `.DD.`) in a
+  /// naming pattern for [on].
+  static String expandDates(String pattern, DateTime on) {
+    var r = pattern;
+    r = r.replaceAll('.YYYY.', '.${on.year}.');
+    r = r.replaceAll('.YY.', '.${on.year.toString().substring(2)}.');
+    r = r.replaceAll('.MM.', '.${on.month.toString().padLeft(2, '0')}.');
+    r = r.replaceAll('.DD.', '.${on.day.toString().padLeft(2, '0')}.');
+    return r;
+  }
+
+  /// Resolve [pattern] to its counter series for [now] (default: today): the
+  /// prefix the counter is keyed on (e.g. `SINV-.YYYY.-.####` → `SINV-2026-`)
+  /// and the zero-pad width. Returns null when the pattern has no `#` counter
+  /// (a fixed or field-derived name). Lets callers inspect/manage a series
+  /// without minting a number.
+  static ({String prefix, int width})? expandSeries(String pattern,
+      {DateTime? now}) {
+    final result = expandDates(pattern, now ?? DateTime.now());
+    final hashMatch = RegExp(r'\.#+\.?$').firstMatch(result);
+    if (hashMatch == null) return null;
+    final hashPart = hashMatch.group(0)!;
+    final width = hashPart.replaceAll(RegExp('[^#]'), '').length;
+    return (prefix: result.substring(0, hashMatch.start), width: width);
   }
 
   /// Highest numeric suffix already used by documents under [prefix], so a

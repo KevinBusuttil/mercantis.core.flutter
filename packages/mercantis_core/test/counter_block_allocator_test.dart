@@ -94,4 +94,65 @@ void main() {
     // Even if X-0002 were deleted, the counter has moved on.
     expect(await name(), 'X-0003');
   });
+
+  group('peek / setNextNumber (series management)', () {
+    test('peek is 0 before any allocation and tracks the high-water mark',
+        () async {
+      const alloc = CounterBlockAllocator(blockSize: 1000);
+      expect(await alloc.peek(database.db, 'SINV-2026-'), 0);
+      await alloc.next(database.db, 'SINV-2026-', 'devA');
+      // A block of 1000 was reserved, so the mark jumps to the block end.
+      expect(await alloc.peek(database.db, 'SINV-2026-'), 1000);
+    });
+
+    test('setNextNumber seeds a fresh series', () async {
+      const alloc = CounterBlockAllocator(blockSize: 1000);
+      await alloc.setNextNumber(database.db, 'SINV-2026-', 1000);
+      expect(await alloc.next(database.db, 'SINV-2026-', 'devA'), 1000);
+      expect(await alloc.next(database.db, 'SINV-2026-', 'devA'), 1001);
+    });
+
+    test('setNextNumber resets an in-flight series and clears blocks',
+        () async {
+      const alloc = CounterBlockAllocator(blockSize: 1000);
+      expect(await alloc.next(database.db, 'PO-', 'devA'), 1);
+      expect(await alloc.next(database.db, 'PO-', 'devB'), 1001);
+      await alloc.setNextNumber(database.db, 'PO-', 500);
+      // Both devices now reserve fresh blocks from the new mark.
+      expect(await alloc.next(database.db, 'PO-', 'devA'), 500);
+      expect(await alloc.next(database.db, 'PO-', 'devB'), 1500);
+    });
+
+    test('setNextNumber rejects values below 1', () async {
+      const alloc = CounterBlockAllocator();
+      expect(() => alloc.setNextNumber(database.db, 'PO-', 0),
+          throwsArgumentError);
+    });
+  });
+
+  group('NamingSeriesStrategy.expandSeries', () {
+    final jan2026 = DateTime(2026, 1, 2);
+
+    // Date tokens expand in place, keeping their delimiter dots (so the prefix
+    // mirrors exactly what resolve() keys the counter on), and the trailing
+    // hash run is split off as the zero-pad width.
+    test('expands the year token and splits the counter prefix + width', () {
+      final s = NamingSeriesStrategy.expandSeries('SINV-.YYYY.-.####',
+          now: jan2026);
+      expect(s, isNotNull);
+      expect(s!.prefix, 'SINV-.2026.-');
+      expect(s.width, 4);
+    });
+
+    test('expands the two-digit year token', () {
+      final s =
+          NamingSeriesStrategy.expandSeries('PINV-.YY.-.#####', now: jan2026);
+      expect(s!.prefix, 'PINV-.26.-');
+      expect(s.width, 5);
+    });
+
+    test('returns null when the pattern has no counter', () {
+      expect(NamingSeriesStrategy.expandSeries('FIXED-NAME'), isNull);
+    });
+  });
 }
