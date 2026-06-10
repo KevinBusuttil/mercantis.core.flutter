@@ -197,7 +197,21 @@ class DocumentEngine {
         ...doc.toDbRow(),
         '__children': {
           for (final entry in doc.children.entries)
-            entry.key: [for (final child in entry.value) child.toDbRow()],
+            entry.key: [
+              // Build from the saved doc.id, not child.toDbRow(): a child added
+              // to a brand-new document still carries the pre-save empty
+              // parentId, and the peer would otherwise insert orphaned rows that
+              // fetch(doc.id) can't load.
+              for (final child in entry.value)
+                {
+                  'id': child.id,
+                  'parent_id': doc.id,
+                  'parent_doctype': doc.docType,
+                  'table_name': entry.key,
+                  'row_index': child.rowIndex,
+                  'payload': jsonEncode(child.payload),
+                },
+            ],
         },
       },
       deviceId: deviceId,

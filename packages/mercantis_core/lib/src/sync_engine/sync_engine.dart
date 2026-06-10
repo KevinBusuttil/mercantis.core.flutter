@@ -141,7 +141,12 @@ class SyncEngine {
                 'document_children',
                 {
                   'id': row['id'],
-                  'parent_id': row['parent_id'] ?? mutation.documentId,
+                  // Fall back to the parent's id for null OR empty — a stale
+                  // empty parentId from a pre-save child would orphan the row.
+                  'parent_id': (row['parent_id'] is String &&
+                          (row['parent_id'] as String).isNotEmpty)
+                      ? row['parent_id']
+                      : mutation.documentId,
                   'parent_doctype': row['parent_doctype'] ?? mutation.docType,
                   'table_name': row['table_name'] ?? entry.key,
                   'row_index': row['row_index'] ?? 0,
