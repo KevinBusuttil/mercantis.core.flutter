@@ -62,6 +62,8 @@ export 'src/widgets/child_table_field.dart';
 export 'src/widgets/fields/color_field.dart';
 export 'src/widgets/fields/signature_field.dart';
 export 'src/widgets/fields/barcode_field.dart';
+export 'src/widgets/fields/attachment_field.dart';
+export 'src/widgets/fields/geolocation_field.dart';
 export 'src/widgets/fields/scalar_field_widgets.dart';
 export 'src/widgets/search/global_search.dart';
 export 'src/widgets/search/global_search_service.dart';
