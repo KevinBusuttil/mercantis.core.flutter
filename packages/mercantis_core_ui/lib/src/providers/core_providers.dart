@@ -55,15 +55,26 @@ final resolvedMetaProvider =
 /// install; never hardcode it.
 final deviceIdProvider = FutureProvider<String>((ref) async {
   const key = 'core.device_id';
-  final prefs = await SharedPreferences.getInstance();
-  var id = prefs.getString(key);
-  if (id == null || id.isEmpty) {
+  String generate() {
     final rng = Random.secure();
     final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
-    id = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    await prefs.setString(key, id);
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
-  return id;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString(key);
+    if (id == null || id.isEmpty) {
+      id = generate();
+      await prefs.setString(key, id);
+    }
+    return id;
+  } catch (_) {
+    // No prefs platform (e.g. plain unit tests): fall back to an ephemeral id
+    // so the engine still constructs, without coupling every engine-using test
+    // to a SharedPreferences mock. Real platforms always persist.
+    return generate();
+  }
 });
 
 final namingServiceProvider = Provider<NamingService>((ref) => NamingService());
