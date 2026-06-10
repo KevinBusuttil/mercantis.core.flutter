@@ -427,7 +427,7 @@ class _CustomizeFieldsSheetState extends ConsumerState<CustomizeFieldsSheet> {
 
           // Type
           DropdownButtonFormField<_CustomizableType>(
-            value: draft.type,
+            initialValue: draft.type,
             decoration: const InputDecoration(labelText: 'Type'),
             items: _CustomizableType.values
                 .map((t) => DropdownMenuItem(
@@ -477,7 +477,7 @@ class _CustomizeFieldsSheetState extends ConsumerState<CustomizeFieldsSheet> {
 
           // Position
           DropdownButtonFormField<String?>(
-            value: draft.insertAfter,
+            initialValue: draft.insertAfter,
             decoration: const InputDecoration(labelText: 'Place after'),
             items: [
               const DropdownMenuItem<String?>(

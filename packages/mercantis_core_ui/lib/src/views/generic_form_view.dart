@@ -710,7 +710,7 @@ class FieldWidget extends StatelessWidget {
             .where((o) => o.isNotEmpty)
             .toList();
         return DropdownButtonFormField<String>(
-          value: value as String?,
+          initialValue: value as String?,
           decoration: _decoration(context),
           items: opts
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
