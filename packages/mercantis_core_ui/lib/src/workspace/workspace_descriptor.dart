@@ -97,6 +97,7 @@ class WorkspaceDescriptor {
     required this.label,
     required this.icon,
     required this.selectedIcon,
+    this.shortLabel,
     this.subtitle,
     this.accentColor,
     this.sections = const [],
@@ -113,6 +114,10 @@ class WorkspaceDescriptor {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  /// A terse label for tight navigation slots (phone bottom bar, compact rail),
+  /// where the full [label] wraps. Falls back to [label] via [navLabel].
+  final String? shortLabel;
   final String? subtitle;
   final Color? accentColor;
   final List<WorkspaceSection> sections;
@@ -126,6 +131,9 @@ class WorkspaceDescriptor {
 
   String get path => '/w/$id';
   String get dashboardPath => '/w/$id';
+
+  /// Label for cramped nav slots — [shortLabel] when set, else [label].
+  String get navLabel => shortLabel ?? label;
 
   Iterable<DocTypeWorkspaceItem> get docTypeItems sync* {
     for (final s in sections) {

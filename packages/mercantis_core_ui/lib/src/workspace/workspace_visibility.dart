@@ -75,6 +75,7 @@ class WorkspaceVisibilityFilter {
         label: w.label,
         icon: w.icon,
         selectedIcon: w.selectedIcon,
+        shortLabel: w.shortLabel,
         subtitle: w.subtitle,
         accentColor: w.accentColor,
         sections: keptSections,

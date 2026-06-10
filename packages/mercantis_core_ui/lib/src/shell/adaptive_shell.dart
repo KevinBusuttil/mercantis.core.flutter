@@ -109,7 +109,7 @@ class _PhoneShell extends StatelessWidget {
         NavigationDestination(
           icon: Icon(w.icon),
           selectedIcon: Icon(w.selectedIcon),
-          label: w.label,
+          label: w.navLabel,
         ),
       if (overflow.isNotEmpty)
         const NavigationDestination(
@@ -194,7 +194,9 @@ class _RailShell extends StatelessWidget {
                 NavigationRailDestination(
                   icon: Icon(w.icon),
                   selectedIcon: Icon(w.selectedIcon),
-                  label: Text(w.label),
+                  // Full label beside the icon (extended rail) has room; the
+                  // compact rail stacks it under the icon, so use the terse one.
+                  label: Text(extended ? w.label : w.navLabel),
                 ),
             ],
           ),
