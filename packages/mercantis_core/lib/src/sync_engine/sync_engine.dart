@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:sqflite_common/sqflite.dart';
 import '../document_engine/document.dart';
 import '../metadata/metadata_registry.dart';
@@ -112,7 +114,11 @@ class SyncEngine {
     switch (mutation.type) {
       case MutationType.createDocument:
       case MutationType.updateDocument:
-        final payload = mutation.payload;
+        final payload = Map<String, dynamic>.from(mutation.payload);
+        // Children ride under a reserved key; strip it before writing the
+        // header, then rebuild the child rows (only when present, so a header-
+        // only update such as an outstanding-amount change leaves them intact).
+        final children = payload.remove('__children');
         await _db.insert(
           'documents',
           {
@@ -122,6 +128,32 @@ class SyncEngine {
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+        if (children is Map) {
+          await _db.delete('document_children',
+              where: 'parent_id = ?', whereArgs: [mutation.documentId]);
+          for (final entry in children.entries) {
+            final rows = entry.value;
+            if (rows is! List) continue;
+            for (final row in rows) {
+              if (row is! Map) continue;
+              final childPayload = row['payload'];
+              await _db.insert(
+                'document_children',
+                {
+                  'id': row['id'],
+                  'parent_id': row['parent_id'] ?? mutation.documentId,
+                  'parent_doctype': row['parent_doctype'] ?? mutation.docType,
+                  'table_name': row['table_name'] ?? entry.key,
+                  'row_index': row['row_index'] ?? 0,
+                  'payload': childPayload is String
+                      ? childPayload
+                      : jsonEncode(childPayload),
+                },
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+            }
+          }
+        }
       case MutationType.deleteDocument:
         await _db.delete(
           'documents',
