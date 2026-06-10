@@ -183,7 +183,9 @@ class DocumentEngine {
       }),
     });
 
-    // Append mutation record
+    // Append mutation record. Children travel under a reserved `__children`
+    // key (each in document_children row shape) so a peer rebuilds the full
+    // document — header + line items — on apply, not just the header.
     await _syncEngine.appendMutation(MutationRecord(
       id: _uuid.v4(),
       type: previousVersion == null
@@ -191,7 +193,13 @@ class DocumentEngine {
           : MutationType.updateDocument,
       docType: doc.docType,
       documentId: doc.id,
-      payload: doc.toDbRow(),
+      payload: {
+        ...doc.toDbRow(),
+        '__children': {
+          for (final entry in doc.children.entries)
+            entry.key: [for (final child in entry.value) child.toDbRow()],
+        },
+      },
       deviceId: deviceId,
       userId: userId,
       localTimestamp: DateTime.now(),

@@ -7,8 +7,10 @@ import '../providers/core_providers.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
 import '../widgets/child_table_field.dart';
+import '../widgets/fields/attachment_field.dart';
 import '../widgets/fields/barcode_field.dart';
 import '../widgets/fields/color_field.dart';
+import '../widgets/fields/geolocation_field.dart';
 import '../widgets/fields/scalar_field_widgets.dart';
 import '../widgets/fields/signature_field.dart';
 import '../widgets/link_picker_field.dart';
@@ -367,6 +369,7 @@ class _MetaForm extends StatelessWidget {
       case FieldType.code:
       case FieldType.signature:
       case FieldType.barcode:
+      case FieldType.geolocation:
         return true;
       default:
         return false;
@@ -812,6 +815,31 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.code:
         return CodeField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.attach:
+        return AttachmentField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+        );
+      case FieldType.attachImage:
+        return AttachmentField(
+          label: _label,
+          required: field.required,
+          value: value as String?,
+          readOnly: readOnly,
+          onChanged: onChanged,
+          isImage: true,
+        );
+      case FieldType.geolocation:
+        return GeolocationField(
           label: _label,
           required: field.required,
           value: value as String?,

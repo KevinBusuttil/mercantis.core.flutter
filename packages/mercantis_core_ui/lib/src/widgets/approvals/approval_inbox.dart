@@ -99,13 +99,15 @@ class _ApprovalTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (entry.amount != null)
+                        if (entry.amount != null) ...[
+                          const SizedBox(width: MercantisSpacing.sm),
                           Text(
                             entry.amount!,
                             style: theme.textTheme.bodyLarge?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 2),
