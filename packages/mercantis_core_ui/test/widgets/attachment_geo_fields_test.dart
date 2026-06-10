@@ -67,6 +67,8 @@ void main() {
       await tester.enterText(find.byType(TextField), '/tmp/report.pdf');
       expect(captured, '/tmp/report.pdf');
 
+      // Rebuild so the conditional clear button renders, then clear.
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.clear));
       await tester.pump();
       expect(captured, isNull);
