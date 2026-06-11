@@ -48,6 +48,10 @@ class FileSystemCloudAdapter implements CloudAdapter {
 
   static const String _stateFileName = '.adapter-state.json';
 
+  /// Shared, content-addressed blob directory (ADR-048). Lives alongside the
+  /// per-device subdirectories but is not a peer, so [_pull] skips it.
+  static const String _blobsDirName = '_blobs';
+
   FileSystemCloudAdapter._({
     required Directory root,
     required String localDeviceId,
@@ -115,6 +119,40 @@ class FileSystemCloudAdapter implements CloudAdapter {
   @override
   Future<void> acknowledge(List<String> mutationIds) async {}
 
+  // Blob channel (ADR-048): content-addressed files under `<root>/_blobs/`.
+  // Writes are idempotent (same sha256 ⇒ same path) and serialised through the
+  // same queue as push/pull so concurrent awaits can't interleave a partial
+  // write. The file name is the SHA-256 itself — 64 hex chars, a safe basename.
+
+  @override
+  Future<void> pushBlob(String sha256, List<int> bytes) =>
+      _synchronized(() => _pushBlob(sha256, bytes));
+
+  @override
+  Future<List<int>?> pullBlob(String sha256) =>
+      _synchronized(() => _pullBlob(sha256));
+
+  @override
+  Future<bool> hasBlob(String sha256) async => _blobFile(sha256).exists();
+
+  Future<void> _pushBlob(String sha256, List<int> bytes) async {
+    final file = _blobFile(sha256);
+    if (await file.exists()) return; // content-addressed ⇒ already there
+    await Directory(p.dirname(file.path)).create(recursive: true);
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsBytes(bytes, flush: true);
+    await tmp.rename(file.path);
+  }
+
+  Future<List<int>?> _pullBlob(String sha256) async {
+    final file = _blobFile(sha256);
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
+  }
+
+  File _blobFile(String sha256) =>
+      File(p.join(_root.path, _blobsDirName, sha256));
+
   // Core (runs inside the serialisation queue)
 
   Future<void> _push(List<MutationRecord> mutations) async {
@@ -159,7 +197,7 @@ class FileSystemCloudAdapter implements CloudAdapter {
 
     for (final peerDir in peerDirs) {
       final peer = p.basename(peerDir.path);
-      if (peer == _localDeviceId) continue;
+      if (peer == _localDeviceId || peer == _blobsDirName) continue;
 
       final peerCursor = _peerCursors[peer] ?? 0;
 

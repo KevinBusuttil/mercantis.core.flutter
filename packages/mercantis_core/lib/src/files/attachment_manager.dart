@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:sqflite_common/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync_engine/mutation_record.dart';
+import '../sync_engine/sync_engine.dart';
 import 'attachment.dart';
 import 'attachment_store.dart';
 
@@ -19,7 +21,23 @@ class AttachmentManager {
   /// When true (default), attach/detach operations append an `audit_log` row.
   final bool writeAudit;
 
-  AttachmentManager(this._db, this._store, {this.writeAudit = true});
+  /// When supplied, attach/detach operations also enqueue sync mutations
+  /// (ADR-048) so attachments replicate to company peers. Null leaves
+  /// attachments device-local.
+  final SyncEngine? _syncEngine;
+
+  /// Identifies this device on the mutations it enqueues. Defaults to empty for
+  /// standalone/test callers that don't sync.
+  final String _deviceId;
+
+  AttachmentManager(
+    this._db,
+    this._store, {
+    this.writeAudit = true,
+    SyncEngine? syncEngine,
+    String deviceId = '',
+  })  : _syncEngine = syncEngine,
+        _deviceId = deviceId;
 
   /// Persist [data] as an attachment on `(documentId, docType)`, optionally
   /// bound to [fieldKey]. Writes the bytes, then the metadata row and an audit
@@ -64,6 +82,16 @@ class AttachmentManager {
       _store.delete(storagePath);
       throw AttachmentException.ioFailure(e.toString());
     }
+
+    // Replicate: the metadata row travels as the mutation payload; the bytes
+    // ride the cloud adapter's content-addressed blob channel at push time.
+    await _enqueue(
+      MutationType.createAttachment,
+      documentId: attachment.id,
+      docType: attachment.docType,
+      payload: _toRow(attachment),
+      userId: userId,
+    );
     return attachment;
   }
 
@@ -124,6 +152,13 @@ class AttachmentManager {
       }
     });
     _store.delete(existing.storagePath);
+    await _enqueue(
+      MutationType.deleteAttachment,
+      documentId: existing.id,
+      docType: existing.docType,
+      payload: {'storage_path': existing.storagePath},
+      userId: userId,
+    );
   }
 
   /// Cascade: remove every attachment for [documentId]. Called by
@@ -140,9 +175,40 @@ class AttachmentManager {
       }
     });
     _store.deleteAll(documentId);
+    for (final a in existing) {
+      await _enqueue(
+        MutationType.deleteAttachment,
+        documentId: a.id,
+        docType: a.docType,
+        payload: {'storage_path': a.storagePath},
+        userId: userId,
+      );
+    }
   }
 
   // Internals
+
+  /// Enqueue a sync mutation when a sync engine is wired in; otherwise a no-op.
+  Future<void> _enqueue(
+    MutationType type, {
+    required String documentId,
+    required String docType,
+    required Map<String, dynamic> payload,
+    required String userId,
+  }) async {
+    final sync = _syncEngine;
+    if (sync == null) return;
+    await sync.appendMutation(MutationRecord(
+      id: const Uuid().v4(),
+      type: type,
+      docType: docType,
+      documentId: documentId,
+      payload: payload,
+      deviceId: _deviceId,
+      userId: userId,
+      localTimestamp: DateTime.now(),
+    ));
+  }
 
   Map<String, Object?> _toRow(Attachment a) => {
         'id': a.id,
