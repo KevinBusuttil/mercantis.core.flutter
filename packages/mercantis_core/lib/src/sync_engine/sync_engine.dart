@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:sqflite_common/sqflite.dart';
 import '../document_engine/document.dart';
+import '../files/attachment_store.dart';
 import '../metadata/metadata_registry.dart';
 import 'cloud_adapter.dart';
 import 'conflict_resolver.dart';
@@ -16,6 +17,13 @@ class SyncEngine {
   final CloudAdapter _cloudAdapter;
   final ConflictResolver _resolver;
 
+  /// Byte store for attachment sync (ADR-048). When present, attachment
+  /// mutations carry their bytes through the cloud adapter's blob channel:
+  /// pushed before the metadata mutation, fetched on apply, and backfilled by
+  /// [reconcileBlobs]. When null the engine still replicates attachment
+  /// metadata, but bytes stay device-local.
+  final AttachmentStore? _attachmentStore;
+
   final _stateController = StreamController<SyncEngineState>.broadcast();
   Stream<SyncEngineState> get state => _stateController.stream;
 
@@ -24,10 +32,12 @@ class SyncEngine {
     required MetadataRegistry registry,
     CloudAdapter? cloudAdapter,
     ConflictResolver? resolver,
+    AttachmentStore? attachmentStore,
   })  : _db = database,
         _registry = registry,
         _cloudAdapter = cloudAdapter ?? const NoOpCloudAdapter(),
-        _resolver = resolver ?? ConflictResolver();
+        _resolver = resolver ?? ConflictResolver(),
+        _attachmentStore = attachmentStore;
 
   Future<void> appendMutation(MutationRecord record) async {
     await _db.insert(
@@ -55,6 +65,9 @@ class SyncEngine {
       await _markStatus(mutations.map((m) => m.id).toList(),
           MutationStatus.pushing);
 
+      // Ship attachment bytes ahead of the metadata mutations that reference
+      // them, so a peer that pulls the mutation always finds the blob waiting.
+      await _pushBlobsFor(mutations);
       await _cloudAdapter.push(mutations);
       await _markStatus(
           mutations.map((m) => m.id).toList(), MutationStatus.pushed);
@@ -82,6 +95,17 @@ class SyncEngine {
   }
 
   Future<void> _applyMutation(MutationRecord mutation) async {
+    // Attachments are not documents: route them before the document load /
+    // conflict-resolution path, which keys on the `documents` table.
+    if (mutation.type == MutationType.createAttachment) {
+      await _applyCreateAttachment(mutation);
+      return;
+    }
+    if (mutation.type == MutationType.deleteAttachment) {
+      await _applyDeleteAttachment(mutation);
+      return;
+    }
+
     final docType = await _registry.get(mutation.docType);
     final policy = docType?.syncPolicy;
 
@@ -181,6 +205,78 @@ class SyncEngine {
         );
       default:
         break;
+    }
+  }
+
+  // Attachment sync (ADR-048)
+
+  /// Push the bytes for every `createAttachment` mutation in [mutations] to the
+  /// blob channel. Read from the local store by storage path; a missing local
+  /// file (shouldn't happen for our own creates) is skipped rather than fatal.
+  Future<void> _pushBlobsFor(List<MutationRecord> mutations) async {
+    final store = _attachmentStore;
+    if (store == null) return;
+    for (final mutation in mutations) {
+      if (mutation.type != MutationType.createAttachment) continue;
+      final sha = mutation.payload['sha256'];
+      final storagePath = mutation.payload['storage_path'];
+      if (sha is! String || storagePath is! String) continue;
+      if (!store.exists(storagePath)) continue;
+      await _cloudAdapter.pushBlob(sha, store.read(storagePath));
+    }
+  }
+
+  Future<void> _applyCreateAttachment(MutationRecord mutation) async {
+    await _db.insert(
+      'attachments',
+      Map<String, Object?>.from(mutation.payload),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await _ensureBlobPresent(mutation.payload);
+  }
+
+  Future<void> _applyDeleteAttachment(MutationRecord mutation) async {
+    await _db.delete('attachments',
+        where: 'id = ?', whereArgs: [mutation.documentId]);
+    // Bytes under `_blobs/<sha>` are content-addressed and may be shared by
+    // other attachments, so they are left in place; only the local store copy
+    // (keyed by document/attachment id) is removed.
+    final store = _attachmentStore;
+    final storagePath = mutation.payload['storage_path'];
+    if (store != null && storagePath is String) store.delete(storagePath);
+  }
+
+  /// Materialise an attachment's bytes locally if they aren't already present,
+  /// fetching from the blob channel and verifying the SHA-256. A blob that
+  /// hasn't propagated yet is left for [reconcileBlobs] to backfill.
+  Future<void> _ensureBlobPresent(Map<String, dynamic> row) async {
+    final store = _attachmentStore;
+    if (store == null) return;
+    final storagePath = row['storage_path'];
+    final sha = row['sha256'];
+    final documentId = row['document_id'];
+    final attachmentId = row['id'];
+    if (storagePath is! String ||
+        sha is! String ||
+        documentId is! String ||
+        attachmentId is! String) {
+      return;
+    }
+    if (store.exists(storagePath)) return;
+    final bytes = await _cloudAdapter.pullBlob(sha);
+    if (bytes == null) return;
+    if (AttachmentStore.sha256Hex(bytes) != sha) return; // integrity guard
+    store.write(documentId, attachmentId, bytes);
+  }
+
+  /// Backfill any attachment whose metadata has synced but whose bytes are
+  /// still missing locally (e.g. the blob hadn't propagated when the mutation
+  /// was applied). Safe to call after every pull; a no-op without a store.
+  Future<void> reconcileBlobs() async {
+    if (_attachmentStore == null) return;
+    final rows = await _db.query('attachments');
+    for (final row in rows) {
+      await _ensureBlobPresent(row);
     }
   }
 

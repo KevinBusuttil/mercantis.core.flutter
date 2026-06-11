@@ -94,10 +94,30 @@ final workflowEngineProvider = FutureProvider<WorkflowEngine>((ref) async {
   return WorkflowEngine(db.db, emitter: ref.watch(eventEmitterProvider));
 });
 
+/// Byte store for attachments, shared by the [AttachmentManager] (writes) and
+/// the [SyncEngine] (replicates bytes, ADR-048). Both must use the same root.
+final attachmentStoreProvider = FutureProvider<AttachmentStore>((ref) async {
+  try {
+    final dir = await getApplicationSupportDirectory();
+    return AttachmentStore('${dir.path}/attachments');
+  } catch (_) {
+    // No path_provider platform (e.g. plain widget tests): fall back to a temp
+    // dir so the engine still constructs — the sync engine reads this provider.
+    // Real platforms always use app support.
+    return AttachmentStore(
+        Directory.systemTemp.createTempSync('mercantis-attachments-').path);
+  }
+});
+
 final syncEngineProvider = FutureProvider<SyncEngine>((ref) async {
   final db = await ref.watch(mercantisDatabaseProvider.future);
   final registry = await ref.watch(metadataRegistryProvider.future);
-  return SyncEngine(database: db.db, registry: registry);
+  final attachmentStore = await ref.watch(attachmentStoreProvider.future);
+  return SyncEngine(
+    database: db.db,
+    registry: registry,
+    attachmentStore: attachmentStore,
+  );
 });
 
 /// Lifecycle hooks injected into the [DocumentEngine] (defaults, posting-time

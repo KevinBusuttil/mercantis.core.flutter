@@ -9,6 +9,8 @@ enum MutationType {
   amendDocument,
   installApp,
   uninstallApp,
+  createAttachment,
+  deleteAttachment,
 }
 
 enum MutationStatus { pending, pushing, pushed, failed }
