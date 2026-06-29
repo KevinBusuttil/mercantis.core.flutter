@@ -8,6 +8,7 @@ class MigrationRunner {
     if (version < 3) await _v3(db);
     if (version < 4) await _v4(db);
     if (version < 5) await _v5(db);
+    if (version < 6) await _v6(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -255,5 +256,30 @@ class MigrationRunner {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_attachments_field ON attachments (document_id, field_key)');
     await db.update('schema_version', {'version': 5});
+  }
+
+  /// Posting batches (C2) — the atomic-posting ledger: one row per posting
+  /// attempt for a source document, with status / idempotency / reversal
+  /// linkage. Core owns the primitive; Hub owns the accounting rules.
+  static Future<void> _v6(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS posting_batches (
+        id TEXT PRIMARY KEY NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        version INTEGER NOT NULL DEFAULT 1,
+        error_code TEXT,
+        error_message TEXT,
+        posted_at INTEGER,
+        posted_by TEXT NOT NULL DEFAULT '',
+        reversal_of_batch TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_posting_batches_source ON posting_batches (source_type, source_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_posting_batches_status ON posting_batches (status)');
+    await db.update('schema_version', {'version': 6});
   }
 }
