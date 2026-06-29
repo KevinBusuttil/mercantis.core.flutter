@@ -3,15 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:mercantis_core_ui/mercantis_core_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// CU3: the Data Browser screen — schema sidebar + read-only query runner.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
 
   late MercantisDatabase database;
 
   setUp(() async {
+    // DataBrowserView persists saved queries via shared_preferences; register
+    // the in-memory mock so its initState load doesn't throw MissingPlugin.
+    SharedPreferences.setMockInitialValues({});
     database = await MercantisDatabase.open(
       factory: databaseFactoryFfi,
       path: inMemoryDatabasePath,

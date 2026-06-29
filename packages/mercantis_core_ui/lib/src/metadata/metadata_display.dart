@@ -13,6 +13,7 @@ class MetadataDisplay {
     'lead_name',
     'opportunity_name',
     'company_name',
+    'account_name',
     'first_name',
     'subject',
     'name',

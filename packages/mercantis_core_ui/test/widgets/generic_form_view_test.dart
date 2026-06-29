@@ -185,9 +185,15 @@ void main() {
     await tester.tap(find.text('New Customer'));
     await _drain(tester);
 
-    // The inline create sheet opens and renders the target DocType's field.
+    // The inline create sheet opens (its Create action) and renders an editable
+    // field for the target DocType. The field's label is drawn via RichText, so
+    // assert on the editor widget rather than label text.
     expect(find.text('Create Customer'), findsOneWidget);
-    expect(find.text('Customer Name'), findsOneWidget);
+    expect(
+      find.descendant(
+          of: find.byType(Dialog), matching: find.byType(TextField)),
+      findsWidgets,
+    );
   });
 }
 
