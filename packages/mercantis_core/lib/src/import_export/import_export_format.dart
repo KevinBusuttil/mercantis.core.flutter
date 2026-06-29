@@ -1,4 +1,5 @@
 /// Common shapes for the bulk import / export subsystem (ADR-046).
+library;
 
 /// Wire format for bulk transfer.
 enum ImportExportFormat { csv, json }

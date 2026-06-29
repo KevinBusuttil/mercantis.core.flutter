@@ -57,7 +57,9 @@ class RequiredFieldStage extends ValidationStage {
       if (!field.required) continue;
       if (field.type == FieldType.sectionBreak ||
           field.type == FieldType.columnBreak ||
-          field.type == FieldType.heading) continue;
+          field.type == FieldType.heading) {
+        continue;
+      }
       final value = doc.payload[field.key];
       final isEmpty = value == null ||
           value == '' ||
