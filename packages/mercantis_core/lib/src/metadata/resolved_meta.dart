@@ -26,6 +26,8 @@ class ResolvedFieldDefinition extends FieldDefinition {
     super.precision,
     super.linkDocType,
     super.tableDocType,
+    super.helpText,
+    super.placeholder,
     this.isCustomField = false,
     this.propertyOverrides = const {},
   });
@@ -56,6 +58,8 @@ class ResolvedFieldDefinition extends FieldDefinition {
         precision: fd.precision,
         linkDocType: fd.linkDocType,
         tableDocType: fd.tableDocType,
+        helpText: fd.helpText,
+        placeholder: fd.placeholder,
         isCustomField: isCustomField,
         propertyOverrides: propertyOverrides,
       );

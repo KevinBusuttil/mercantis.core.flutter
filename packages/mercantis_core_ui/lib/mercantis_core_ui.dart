@@ -79,12 +79,16 @@ export 'src/navigation/navigation_shell.dart';
 
 // Document views (metadata-driven)
 export 'src/views/command_bar_view.dart';
+export 'src/views/data_browser_view.dart';
 export 'src/views/doc_type_list_view.dart';
 export 'src/views/form_builder_view.dart';
 export 'src/views/generic_form_view.dart';
+export 'src/views/form_field_support.dart';
 export 'src/views/generic_list_view.dart';
 export 'src/views/metadata_list_view.dart';
 export 'src/views/record_collection_view.dart';
+export 'src/views/record_view_mode.dart';
+export 'src/views/record_tree_view.dart';
 export 'src/views/record_workspace_chrome.dart';
 export 'src/views/customize_fields_sheet.dart';
 export 'src/views/settings_view.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'navigation_shell.dart';
+import '../views/data_browser_view.dart';
 import '../views/doc_type_list_view.dart';
 import '../views/generic_list_view.dart';
 import '../views/generic_form_view.dart';
@@ -45,6 +46,12 @@ final shellRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             builder: (context, state) => const _SettingsView(),
+          ),
+          // Developer tool — gate to a privileged role (e.g. System Manager) at
+          // the navigation entry that links here.
+          GoRoute(
+            path: '/data-browser',
+            builder: (context, state) => const DataBrowserView(),
           ),
         ],
       ),

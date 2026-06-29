@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/core_providers.dart';
 import '../widgets/link_picker_field.dart';
+import 'record_tree_view.dart';
+import 'record_view_mode.dart';
 
 final _recordCollectionProvider =
     FutureProvider.family<List<Document>, String>((ref, docTypeName) async {
@@ -121,6 +124,31 @@ class RecordCollectionView extends ConsumerStatefulWidget {
 class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
   String _query = '';
 
+  /// Persisted per-DocType so a user's choice of Tree vs List sticks across
+  /// launches — mirrors Swift `RecordCollectionHostView`'s UserDefaults-backed
+  /// `recordViewMode.<preferenceKey>`.
+  RecordViewMode _viewMode = RecordViewMode.list;
+  String get _viewModeKey => 'core.record_view_mode.${widget.docTypeName}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadViewMode();
+  }
+
+  Future<void> _loadViewMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = RecordViewMode.fromName(prefs.getString(_viewModeKey));
+    if (!mounted || saved == null) return;
+    setState(() => _viewMode = saved);
+  }
+
+  Future<void> _setViewMode(RecordViewMode mode) async {
+    setState(() => _viewMode = mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_viewModeKey, mode.name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final docsAsync = ref.watch(_recordCollectionProvider(widget.docTypeName));
@@ -154,13 +182,42 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
       body: docsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(message: e.toString()),
-        data: (docs) => _buildBody(context, resolvedTitle, docs),
+        data: (docs) => _buildBody(
+            context, resolvedTitle, docs, docTypeAsync.asData?.value),
       ),
     );
   }
 
-  Widget _buildBody(
-      BuildContext context, String resolvedTitle, List<Document> docs) {
+  Widget _buildBody(BuildContext context, String resolvedTitle,
+      List<Document> docs, DocType? docType) {
+    // Tree is offered only for hierarchical (isTree) DocTypes — e.g. the chart
+    // of accounts — matching Swift's `effectiveViewModes` gate.
+    final supportsTree = docType?.isTree ?? false;
+    final mode = supportsTree ? _viewMode : RecordViewMode.list;
+
+    if (mode == RecordViewMode.tree && docType != null) {
+      return Column(
+        children: [
+          _Header(
+            title: resolvedTitle,
+            subtitle: widget.subtitle,
+            icon: widget.icon,
+            recordCount: docs.length,
+          ),
+          _ViewModeToggle(mode: mode, onChanged: _setViewMode),
+          Expanded(
+            child: RecordTreeView(
+              docType: docType,
+              documents: docs,
+              selectedDocumentId: null,
+              onSelect: (d) => GoRouter.of(context)
+                  .go('/form/${widget.docTypeName}/${d.id}'),
+            ),
+          ),
+        ],
+      );
+    }
+
     final filtered = _query.isEmpty
         ? docs
         : docs.where((d) {
@@ -181,6 +238,10 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
             recordCount: docs.length,
           ),
         ),
+        if (supportsTree)
+          SliverToBoxAdapter(
+            child: _ViewModeToggle(mode: mode, onChanged: _setViewMode),
+          ),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -293,6 +354,41 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
 
   String _humanError(Object e) =>
       e is DocumentEngineError ? e.humanMessage : e.toString();
+}
+
+/// List ↔ Tree switcher shown only for hierarchical DocTypes.
+class _ViewModeToggle extends StatelessWidget {
+  const _ViewModeToggle({required this.mode, required this.onChanged});
+
+  final RecordViewMode mode;
+  final ValueChanged<RecordViewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<RecordViewMode>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+              value: RecordViewMode.list,
+              icon: Icon(Icons.view_list_outlined),
+              label: Text('List'),
+            ),
+            ButtonSegment(
+              value: RecordViewMode.tree,
+              icon: Icon(Icons.account_tree_outlined),
+              label: Text('Tree'),
+            ),
+          ],
+          selected: {mode == RecordViewMode.tree ? RecordViewMode.tree : RecordViewMode.list},
+          onSelectionChanged: (s) => onChanged(s.first),
+        ),
+      ),
+    );
+  }
 }
 
 class _Header extends StatelessWidget {

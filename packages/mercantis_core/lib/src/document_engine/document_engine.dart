@@ -12,10 +12,12 @@ import '../naming/naming_strategy.dart';
 import '../sync_engine/sync_engine.dart';
 import '../sync_engine/mutation_record.dart';
 import '../notifications/event_emitter.dart';
+import '../identity/execution_context.dart';
 import 'document.dart';
 import 'document_engine_error.dart';
 import 'document_version.dart';
 import 'list_filter.dart';
+import 'unit_of_work.dart';
 import 'validation_pipeline.dart';
 
 export 'document_engine_error.dart';
@@ -44,6 +46,23 @@ class DocumentEngine {
 
   static const _uuid = Uuid();
 
+  /// The effective per-operation identity. When a caller supplies a [context] it
+  /// is the authority (its roles drive permission checks — an explicit context
+  /// with no roles is denied, fail-closed); otherwise a legacy fallback carries
+  /// the instance identity plus the call's [userRoles], preserving pre-C1
+  /// behaviour exactly.
+  ExecutionContext _resolve(ExecutionContext? context, Set<String> userRoles) =>
+      context ??
+      ExecutionContext.legacy(
+          userId: userId, deviceId: deviceId, roles: userRoles);
+
+  /// Authorises [op] under [ctx]: a system context bypasses gating; otherwise the
+  /// permission engine is consulted with the context's roles.
+  bool _authorized(DocumentOperation op, DocType docType, ExecutionContext ctx) =>
+      ctx.isSystemOperation ||
+      _permissionEngine.canPerform(
+          operation: op, on: docType, userRoles: ctx.roles);
+
   DocumentEngine({
     required Database database,
     required MetadataRegistry registry,
@@ -66,7 +85,9 @@ class DocumentEngine {
         _emitter = emitter,
         _interceptors = interceptors;
 
-  Future<Document> save(Document doc, Set<String> userRoles) async {
+  Future<Document> save(Document doc, Set<String> userRoles,
+      {ExecutionContext? context}) async {
+    final ctx = _resolve(context, userRoles);
     final docType = await _registry.get(doc.docType);
     if (docType == null) {
       throw DocumentEngineError.docTypeNotFound(doc.docType);
@@ -85,8 +106,7 @@ class DocumentEngine {
     final op =
         doc.id.isEmpty ? DocumentOperation.create : DocumentOperation.write;
 
-    if (!_permissionEngine.canPerform(
-        operation: op, on: docType, userRoles: userRoles)) {
+    if (!_authorized(op, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: op.name,
         docType: doc.docType,
@@ -115,16 +135,17 @@ class DocumentEngine {
 
     // Assign ID if new
     if (doc.id.isEmpty) {
-      final context =
-          NamingContext(database: _db, userId: userId, deviceId: deviceId);
-      doc.id = await _namingService.resolve(docType, doc, context);
+      final namingContext = NamingContext(
+          database: _db, userId: ctx.operatorId, deviceId: ctx.deviceId);
+      doc.id = await _namingService.resolve(docType, doc, namingContext);
       doc.createdAt = DateTime.now();
     }
     doc.modifiedAt = DateTime.now();
     doc.syncState = SyncState.local;
 
-    // Run validation pipeline
-    final result = await _pipeline.run(doc, docType, _db, op, userRoles);
+    // Run validation pipeline (incl. recursive child-row validation — C3)
+    final result = await _pipeline.run(doc, docType, _db, op, ctx.roles,
+        childDocTypeProvider: _registry.get);
     if (!result.isValid) {
       throw DocumentEngineError.validationFailed(result.errors);
     }
@@ -166,17 +187,22 @@ class DocumentEngine {
       }
     }
 
-    // Write audit log entry
+    // Write audit log entry. Parent-field diffs plus child-row diffs (C3 / P0.6)
+    // so a document's line-item edits are captured in version history too.
     final diffs = previousVersion != null
-        ? DocumentVersion.computeDiff(previousVersion.payload, doc.payload)
+        ? <FieldDiff>[
+            ...DocumentVersion.computeDiff(previousVersion.payload, doc.payload),
+            ...DocumentVersion.computeChildDiffs(
+                previousVersion.children, doc.children),
+          ]
         : <FieldDiff>[];
     await _db.insert('audit_log', {
       'id': _uuid.v4(),
       'document_id': doc.id,
       'doctype': doc.docType,
       'action': previousVersion == null ? 'created' : 'updated',
-      'user_id': userId,
-      'device_id': deviceId,
+      'user_id': ctx.operatorId,
+      'device_id': ctx.deviceId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'payload': jsonEncode({
         'diffs': diffs.map((d) => d.toJson()).toList(),
@@ -214,14 +240,14 @@ class DocumentEngine {
             ],
         },
       },
-      deviceId: deviceId,
-      userId: userId,
+      deviceId: ctx.deviceId,
+      userId: ctx.operatorId,
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
 
     _emitter.publish(DocumentSavedEvent(
-        document: doc, docType: doc.docType, userId: userId));
+        document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
 
@@ -235,8 +261,9 @@ class DocumentEngine {
   /// [DocumentEngineError.fieldImmutableAfterSubmit]. Emits a
   /// [DocumentSavedEvent] (not Submitted/Cancelled), so it never re-triggers
   /// derivation.
-  Future<Document> applyOnSubmitUpdate(
-      Document doc, Set<String> userRoles) async {
+  Future<Document> applyOnSubmitUpdate(Document doc, Set<String> userRoles,
+      {ExecutionContext? context}) async {
+    final ctx = _resolve(context, userRoles);
     final docType = await _registry.get(doc.docType);
     if (docType == null) {
       throw DocumentEngineError.docTypeNotFound(doc.docType);
@@ -248,10 +275,7 @@ class DocumentEngine {
         id: doc.id.isEmpty ? '<new>' : doc.id,
       );
     }
-    if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.write,
-        on: docType,
-        userRoles: userRoles)) {
+    if (!_authorized(DocumentOperation.write, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'write',
         docType: doc.docType,
@@ -307,8 +331,8 @@ class DocumentEngine {
       'document_id': doc.id,
       'doctype': doc.docType,
       'action': 'updated',
-      'user_id': userId,
-      'device_id': deviceId,
+      'user_id': ctx.operatorId,
+      'device_id': ctx.deviceId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'payload': jsonEncode({'diffs': diffs.map((d) => d.toJson()).toList()}),
     });
@@ -318,21 +342,22 @@ class DocumentEngine {
       docType: doc.docType,
       documentId: doc.id,
       payload: doc.toDbRow(),
-      deviceId: deviceId,
-      userId: userId,
+      deviceId: ctx.deviceId,
+      userId: ctx.operatorId,
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
     _emitter.publish(DocumentSavedEvent(
-        document: doc, docType: doc.docType, userId: userId));
+        document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
 
-  Future<void> delete(String docType, String id, Set<String> userRoles) async {
+  Future<void> delete(String docType, String id, Set<String> userRoles,
+      {ExecutionContext? context}) async {
+    final ctx = _resolve(context, userRoles);
     final dt = await _registry.get(docType);
     if (dt == null) throw DocumentEngineError.docTypeNotFound(docType);
-    if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.delete, on: dt, userRoles: userRoles)) {
+    if (!_authorized(DocumentOperation.delete, dt, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'delete',
         docType: docType,
@@ -355,13 +380,13 @@ class DocumentEngine {
       docType: docType,
       documentId: id,
       payload: {'id': id, 'doctype': docType},
-      deviceId: deviceId,
-      userId: userId,
+      deviceId: ctx.deviceId,
+      userId: ctx.operatorId,
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
-    _emitter.publish(
-        DocumentDeletedEvent(documentId: id, docType: docType, userId: userId));
+    _emitter.publish(DocumentDeletedEvent(
+        documentId: id, docType: docType, userId: ctx.operatorId));
   }
 
   Future<Document?> fetch(String docType, String id) => _fetchRaw(docType, id);
@@ -393,6 +418,7 @@ class DocumentEngine {
     int? limit,
     int? offset,
     Set<String>? userRoles,
+    ExecutionContext? context,
   }) async {
     var query = 'SELECT * FROM documents WHERE doctype = ?';
     final args = <dynamic>[docType];
@@ -441,10 +467,12 @@ class DocumentEngine {
       if (whereExpression != null && whereExpression.isNotEmpty) whereExpression,
     ];
     if (expressions.isNotEmpty) {
+      final opId = context?.operatorId ?? userId;
+      final roles = context?.roles.toList() ?? userRoles?.toList() ?? const [];
       docs = docs.where((doc) {
         final ctx = EvaluationContext(
           fields: doc.payload,
-          user: {'id': userId, 'roles': userRoles?.toList() ?? const []},
+          user: {'id': opId, 'roles': roles},
         );
         for (final expr in expressions) {
           try {
@@ -460,7 +488,15 @@ class DocumentEngine {
     return docs;
   }
 
-  Future<Document> submit(Document doc, Set<String> userRoles) async {
+  /// Submits a document. When [inTransaction] is supplied, the status flip and
+  /// the callback's writes (posting batches, ledger rows, audit) commit in the
+  /// SAME transaction — together, or the whole submit rolls back. This is the
+  /// seam that makes "submitted but unposted / partially posted" impossible
+  /// (port of Swift's `UnitOfWork`). When omitted, behaviour is unchanged.
+  Future<Document> submit(Document doc, Set<String> userRoles,
+      {ExecutionContext? context,
+      Future<void> Function(UnitOfWork uow)? inTransaction}) async {
+    final ctx = _resolve(context, userRoles);
     final docType = await _registry.get(doc.docType);
     if (docType == null) {
       throw DocumentEngineError.docTypeNotFound(doc.docType);
@@ -475,10 +511,7 @@ class DocumentEngine {
         id: doc.id,
       );
     }
-    if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.submit,
-        on: docType,
-        userRoles: userRoles)) {
+    if (!_authorized(DocumentOperation.submit, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'submit',
         docType: doc.docType,
@@ -491,34 +524,44 @@ class DocumentEngine {
       await interceptor.beforeSubmit(this, doc, docType);
     }
 
+    final modified = DateTime.now();
+    final values = {
+      'docstatus': 1,
+      'modified_at': modified.millisecondsSinceEpoch,
+    };
+    if (inTransaction != null) {
+      await _db.transaction((txn) async {
+        await txn.update('documents', values,
+            where: 'id = ?', whereArgs: [doc.id]);
+        await inTransaction(UnitOfWork(db: txn, context: ctx));
+      });
+    } else {
+      await _db.update('documents', values, where: 'id = ?', whereArgs: [doc.id]);
+    }
+    // Mutate the in-memory doc only after the write/transaction commits, so a
+    // rolled-back submit leaves the document Draft in memory too.
     doc.docStatus = 1;
-    doc.modifiedAt = DateTime.now();
-    await _db.update(
-      'documents',
-      {
-        'docstatus': 1,
-        'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
-      },
-      where: 'id = ?',
-      whereArgs: [doc.id],
-    );
+    doc.modifiedAt = modified;
+
     await _syncEngine.appendMutation(MutationRecord(
       id: _uuid.v4(),
       type: MutationType.submitDocument,
       docType: doc.docType,
       documentId: doc.id,
       payload: {'id': doc.id, 'doctype': doc.docType},
-      deviceId: deviceId,
-      userId: userId,
+      deviceId: ctx.deviceId,
+      userId: ctx.operatorId,
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
     _emitter.publish(DocumentSubmittedEvent(
-        document: doc, docType: doc.docType, userId: userId));
+        document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
 
-  Future<Document> cancel(Document doc, Set<String> userRoles) async {
+  Future<Document> cancel(Document doc, Set<String> userRoles,
+      {ExecutionContext? context}) async {
+    final ctx = _resolve(context, userRoles);
     final docType = await _registry.get(doc.docType);
     if (docType == null) {
       throw DocumentEngineError.docTypeNotFound(doc.docType);
@@ -530,10 +573,7 @@ class DocumentEngine {
         id: doc.id,
       );
     }
-    if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.delete,
-        on: docType,
-        userRoles: userRoles)) {
+    if (!_authorized(DocumentOperation.delete, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'cancel',
         docType: doc.docType,
@@ -557,17 +597,19 @@ class DocumentEngine {
       docType: doc.docType,
       documentId: doc.id,
       payload: {'id': doc.id, 'doctype': doc.docType},
-      deviceId: deviceId,
-      userId: userId,
+      deviceId: ctx.deviceId,
+      userId: ctx.operatorId,
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
     _emitter.publish(DocumentCancelledEvent(
-        document: doc, docType: doc.docType, userId: userId));
+        document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
 
-  Future<Document> amend(Document original, Set<String> userRoles) async {
+  Future<Document> amend(Document original, Set<String> userRoles,
+      {ExecutionContext? context}) async {
+    final ctx = _resolve(context, userRoles);
     final docType = await _registry.get(original.docType);
     if (docType == null) {
       throw DocumentEngineError.docTypeNotFound(original.docType);
@@ -579,10 +621,7 @@ class DocumentEngine {
         id: original.id,
       );
     }
-    if (!_permissionEngine.canPerform(
-        operation: DocumentOperation.amend,
-        on: docType,
-        userRoles: userRoles)) {
+    if (!_authorized(DocumentOperation.amend, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'amend',
         docType: original.docType,
@@ -597,7 +636,7 @@ class DocumentEngine {
       payload: Map.from(original.payload),
       amendedFrom: original.id,
     );
-    return save(amended, userRoles);
+    return save(amended, userRoles, context: context);
   }
 }
 

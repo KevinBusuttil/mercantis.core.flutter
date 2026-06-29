@@ -11,16 +11,24 @@ export 'src/metadata/meta_composer.dart';
 export 'src/metadata/schema_validator.dart';
 export 'src/metadata/built_in_doc_types.dart';
 
+// Identity
+export 'src/identity/execution_context.dart';
+
 // Document Engine
 export 'src/document_engine/document.dart';
 export 'src/document_engine/document_engine.dart';
 export 'src/document_engine/document_version.dart';
 export 'src/document_engine/list_filter.dart';
+export 'src/document_engine/unit_of_work.dart';
 export 'src/document_engine/validation_pipeline.dart';
 
 // Storage
 export 'src/storage/mercantis_database.dart';
 export 'src/storage/migration_runner.dart';
+export 'src/storage/read_only_query.dart';
+
+// Posting
+export 'src/posting/posting_batch.dart';
 
 // Permissions
 export 'src/permissions/permission_engine.dart';
