@@ -143,8 +143,9 @@ class DocumentEngine {
     doc.modifiedAt = DateTime.now();
     doc.syncState = SyncState.local;
 
-    // Run validation pipeline
-    final result = await _pipeline.run(doc, docType, _db, op, ctx.roles);
+    // Run validation pipeline (incl. recursive child-row validation — C3)
+    final result = await _pipeline.run(doc, docType, _db, op, ctx.roles,
+        childDocTypeProvider: _registry.get);
     if (!result.isValid) {
       throw DocumentEngineError.validationFailed(result.errors);
     }
@@ -186,9 +187,14 @@ class DocumentEngine {
       }
     }
 
-    // Write audit log entry
+    // Write audit log entry. Parent-field diffs plus child-row diffs (C3 / P0.6)
+    // so a document's line-item edits are captured in version history too.
     final diffs = previousVersion != null
-        ? DocumentVersion.computeDiff(previousVersion.payload, doc.payload)
+        ? <FieldDiff>[
+            ...DocumentVersion.computeDiff(previousVersion.payload, doc.payload),
+            ...DocumentVersion.computeChildDiffs(
+                previousVersion.children, doc.children),
+          ]
         : <FieldDiff>[];
     await _db.insert('audit_log', {
       'id': _uuid.v4(),
