@@ -88,6 +88,16 @@ class FieldDefinition {
   final String? linkDocType;
   final String? tableDocType;
 
+  /// Short helper sentence shown beneath the field in the form to explain what
+  /// it's for (e.g. "Used on invoices and the customer portal"). Port of Swift
+  /// `FieldDefinition.helpText`.
+  final String? helpText;
+
+  /// Example/ghost text shown inside an empty editor (e.g. "name@business.com").
+  /// Ignored by controls that have no placeholder slot. Port of Swift
+  /// `FieldDefinition.placeholder`.
+  final String? placeholder;
+
   const FieldDefinition({
     required this.key,
     required this.type,
@@ -109,6 +119,8 @@ class FieldDefinition {
     this.precision,
     this.linkDocType,
     this.tableDocType,
+    this.helpText,
+    this.placeholder,
   });
 
   factory FieldDefinition.fromJson(Map<String, dynamic> json) => FieldDefinition(
@@ -140,6 +152,8 @@ class FieldDefinition {
         precision: json['precision'] as int?,
         linkDocType: json['linkDocType'] as String?,
         tableDocType: json['tableDocType'] as String?,
+        helpText: json['helpText'] as String?,
+        placeholder: json['placeholder'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -163,6 +177,8 @@ class FieldDefinition {
         if (precision != null) 'precision': precision,
         if (linkDocType != null) 'linkDocType': linkDocType,
         if (tableDocType != null) 'tableDocType': tableDocType,
+        if (helpText != null) 'helpText': helpText,
+        if (placeholder != null) 'placeholder': placeholder,
       };
 
   FieldDefinition copyWith({
@@ -171,7 +187,7 @@ class FieldDefinition {
     String? visibilityExpression, String? readOnlyExpression, String? formulaExpression,
     FieldPermission? permissions, bool? allowOnSubmit, String? section,
     String? description, List<ValidationRule>? validationRules, int? precision,
-    String? linkDocType, String? tableDocType,
+    String? linkDocType, String? tableDocType, String? helpText, String? placeholder,
   }) =>
       FieldDefinition(
         key: key ?? this.key,
@@ -194,5 +210,7 @@ class FieldDefinition {
         precision: precision ?? this.precision,
         linkDocType: linkDocType ?? this.linkDocType,
         tableDocType: tableDocType ?? this.tableDocType,
+        helpText: helpText ?? this.helpText,
+        placeholder: placeholder ?? this.placeholder,
       );
 }

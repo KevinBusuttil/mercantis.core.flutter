@@ -14,6 +14,7 @@ import '../widgets/fields/geolocation_field.dart';
 import '../widgets/fields/scalar_field_widgets.dart';
 import '../widgets/fields/signature_field.dart';
 import '../widgets/link_picker_field.dart';
+import 'form_field_support.dart';
 import 'record_workspace_chrome.dart';
 
 const _userRoles = <String>{'System Manager'};
@@ -88,6 +89,47 @@ final _referencedDocTypesProvider =
   return out;
 });
 
+/// Master DocTypes referenced by required link fields (and required child-table
+/// link columns) that currently have zero records — drives the non-blocking
+/// "set up your basics first" banner. Port of Swift's `missingPrerequisites`.
+final _missingPrerequisitesProvider =
+    FutureProvider.family<List<MissingPrerequisite>, String>(
+        (ref, docTypeName) async {
+  final meta = await ref.watch(resolvedMetaProvider(docTypeName).future);
+  if (meta == null) return const [];
+  final registry = await ref.watch(metadataRegistryProvider.future);
+  final engine = await ref.watch(documentEngineProvider.future);
+
+  // Prefetch the child DocTypes so the (synchronous) traversal can see their
+  // required link columns.
+  final children = <String, DocType>{};
+  for (final f in meta.docType.fields) {
+    final t = f.tableDocType;
+    if (f.type == FieldType.table && t != null && t.isNotEmpty) {
+      final dt = await registry.get(t);
+      if (dt != null) children[t] = dt;
+    }
+  }
+
+  final targets = FormPrerequisites.candidateTargets(
+    docType: meta.docType,
+    childDocType: (id) => children[id],
+  );
+
+  final missing = <MissingPrerequisite>[];
+  for (final target in targets) {
+    final rows = await engine.list(target);
+    if (rows.isEmpty) {
+      final dt = await registry.get(target);
+      missing.add(MissingPrerequisite(
+        targetDocType: target,
+        displayName: dt?.name ?? target,
+      ));
+    }
+  }
+  return missing;
+});
+
 class GenericFormView extends ConsumerStatefulWidget {
   const GenericFormView({
     super.key,
@@ -131,6 +173,38 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   bool _isSaving = false;
   String? _error;
 
+  /// Live inline errors per field key, and the set of fields the user has
+  /// touched. A field's error is only surfaced once it's been touched (or after
+  /// a Save attempt, which marks every field touched) so a pristine form isn't
+  /// pre-painted red. Mirrors Swift's blur-validated `fieldErrors`.
+  final Map<String, String> _fieldErrors = {};
+  final Set<String> _touched = {};
+
+  /// Re-evaluates one field against the current document and stores/clears its
+  /// inline error. Only touched fields contribute to the surfaced map.
+  void _validateField(ResolvedMeta meta, String key, Document doc) {
+    final field = meta.fieldByKey(key);
+    if (field == null) return;
+    final message = localFieldValidationError(field, doc[key],
+        isReadOnly: doc.docStatus != 0);
+    if (message != null && _touched.contains(key)) {
+      _fieldErrors[key] = message;
+    } else {
+      _fieldErrors.remove(key);
+    }
+  }
+
+  /// Marks every editable field touched and validates them — used on Save so the
+  /// user sees all outstanding required-field errors at once. Returns true when
+  /// the form is locally valid.
+  bool _validateAll(ResolvedMeta meta, Document doc) {
+    for (final f in meta.visibleFields) {
+      _touched.add(f.key);
+      _validateField(meta, f.key, doc);
+    }
+    return _fieldErrors.isEmpty;
+  }
+
   /// Guards against re-recording the same opened record on every rebuild.
   String? _recordedKey;
 
@@ -165,7 +239,14 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
 
   Document _emptyDoc() => Document(id: '', docType: widget.docTypeName);
 
-  Future<void> _save(DocumentEngine engine, Document current) async {
+  Future<void> _save(
+      DocumentEngine engine, Document current, ResolvedMeta? meta) async {
+    // Local pre-flight: surface required/format errors inline before hitting
+    // the engine. The full ValidationPipeline still runs in engine.save.
+    if (meta != null && !_validateAll(meta, current)) {
+      setState(() {});
+      return;
+    }
     setState(() {
       _isSaving = true;
       _error = null;
@@ -240,23 +321,38 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             isSaving: _isSaving,
             isSubmittable: isSubmittable,
             docStatus: docStatus,
-            onSave: () => _save(engine, doc),
+            onSave: () => _save(engine, doc, metaAsync.valueOrNull),
             onSubmit: () => _submit(engine, doc),
             error: _error,
             child: metaAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (meta) => meta != null
-                  ? _MetaForm(
-                      doc: doc,
-                      meta: meta,
-                      readOnly: docStatus != 0,
-                      sectionColumns: widget.sectionColumns,
-                      onChanged: (k, v) => setState(() => _changes[k] = v),
-                      onChildChanged: (k, rows) =>
-                          setState(() => _childChanges[k] = rows),
-                      linkSearchProvider: widget.linkSearchProvider,
-                      childDocTypeProvider: effectiveChildResolver,
+                  ? Column(
+                      children: [
+                        // Non-blocking "set up your basics first" nudge, shown
+                        // only on an editable draft.
+                        if (docStatus == 0)
+                          _PrerequisiteBannerHost(docTypeName: widget.docTypeName),
+                        Expanded(
+                          child: _MetaForm(
+                            doc: doc,
+                            meta: meta,
+                            readOnly: docStatus != 0,
+                            sectionColumns: widget.sectionColumns,
+                            errors: _fieldErrors,
+                            onChanged: (k, v) => setState(() {
+                              _changes[k] = v;
+                              _touched.add(k);
+                              _validateField(meta, k, _apply(base));
+                            }),
+                            onChildChanged: (k, rows) =>
+                                setState(() => _childChanges[k] = rows),
+                            linkSearchProvider: widget.linkSearchProvider,
+                            childDocTypeProvider: effectiveChildResolver,
+                          ),
+                        ),
+                      ],
                     )
                   : _RawForm(doc: doc),
             ),
@@ -304,6 +400,7 @@ class _MetaForm extends StatelessWidget {
     required this.readOnly,
     required this.onChanged,
     required this.onChildChanged,
+    this.errors = const {},
     this.sectionColumns,
     this.linkSearchProvider,
     this.childDocTypeProvider,
@@ -311,6 +408,10 @@ class _MetaForm extends StatelessWidget {
   final Document doc;
   final ResolvedMeta meta;
   final bool readOnly;
+
+  /// Inline validation errors keyed by field key — rendered as a footnote
+  /// beneath the offending control.
+  final Map<String, String> errors;
   final void Function(String key, dynamic value) onChanged;
 
   /// Child-table edits (a full replacement row list for [key]).
@@ -417,7 +518,25 @@ class _MetaForm extends StatelessWidget {
     );
   }
 
+  /// Wraps the control with an inline footnote (help text + validation error)
+  /// when either is present — port of Swift's `fieldFootnotes`.
   Widget _buildField(ResolvedFieldDefinition f, bool stacked) {
+    final control = _buildControl(f, stacked);
+    final help = f.helpText?.trim();
+    final error = errors[f.key]?.trim();
+    final hasFootnote =
+        (help != null && help.isNotEmpty) || (error != null && error.isNotEmpty);
+    if (!hasFootnote) return control;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        control,
+        FieldFootnote(helpText: f.helpText, error: errors[f.key]),
+      ],
+    );
+  }
+
+  Widget _buildControl(ResolvedFieldDefinition f, bool stacked) {
     final isTable =
         f.type == FieldType.table || f.type == FieldType.tableMultiSelect;
     if (isTable) {
@@ -581,6 +700,23 @@ class _TwoColumnLayout extends StatelessWidget {
   }
 }
 
+/// Watches [_missingPrerequisitesProvider] and renders the non-blocking
+/// prerequisite banner, or nothing while loading / when all master data exists.
+class _PrerequisiteBannerHost extends ConsumerWidget {
+  const _PrerequisiteBannerHost({required this.docTypeName});
+  final String docTypeName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final missing = ref
+            .watch(_missingPrerequisitesProvider(docTypeName))
+            .valueOrNull ??
+        const <MissingPrerequisite>[];
+    if (missing.isEmpty) return const SizedBox.shrink();
+    return PrerequisiteBanner(docTypeName: docTypeName, missing: missing);
+  }
+}
+
 class _RawForm extends StatelessWidget {
   const _RawForm({required this.doc});
   final Document doc;
@@ -656,7 +792,9 @@ class FieldWidget extends StatelessWidget {
       label: inline
           ? null
           : _RequiredAwareLabel(label: _label, required: field.required),
-      hintText: hintText ?? (inline ? _label : null),
+      // Explicit placeholder wins; otherwise inline cells fall back to the
+      // field label as ghost text (the column header already names them).
+      hintText: hintText ?? field.placeholder ?? (inline ? _label : null),
       suffixIcon: suffixIcon,
       suffixText: suffixText,
       isDense: inline,

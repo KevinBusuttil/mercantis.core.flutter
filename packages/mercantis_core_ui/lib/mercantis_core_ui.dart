@@ -82,6 +82,7 @@ export 'src/views/command_bar_view.dart';
 export 'src/views/doc_type_list_view.dart';
 export 'src/views/form_builder_view.dart';
 export 'src/views/generic_form_view.dart';
+export 'src/views/form_field_support.dart';
 export 'src/views/generic_list_view.dart';
 export 'src/views/metadata_list_view.dart';
 export 'src/views/record_collection_view.dart';
