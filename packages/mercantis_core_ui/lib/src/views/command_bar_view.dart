@@ -14,6 +14,7 @@ class CommandBarView extends StatelessWidget {
     this.onCancel,
     this.onAmend,
     this.error,
+    this.extraActions = const <Widget>[],
   });
 
   final String docTypeName;
@@ -27,6 +28,11 @@ class CommandBarView extends StatelessWidget {
   final VoidCallback? onCancel;
   final VoidCallback? onAmend;
   final String? error;
+
+  /// Host-contributed action buttons (e.g. document conversion), rendered after
+  /// the built-in lifecycle actions. Pre-built widgets so this view stays free
+  /// of any module dependency.
+  final List<Widget> extraActions;
 
   bool get _isDraft => docStatus == 0;
   bool get _isSubmitted => docStatus == 1;
@@ -115,6 +121,10 @@ class CommandBarView extends StatelessWidget {
       widgets.add(const SizedBox(width: 8));
       widgets
           .add(OutlinedButton(onPressed: onAmend, child: const Text('Amend')));
+    }
+    for (final action in extraActions) {
+      widgets.add(const SizedBox(width: 8));
+      widgets.add(action);
     }
     return widgets;
   }

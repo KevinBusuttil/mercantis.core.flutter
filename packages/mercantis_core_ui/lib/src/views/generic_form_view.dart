@@ -14,6 +14,8 @@ import '../widgets/fields/geolocation_field.dart';
 import '../widgets/fields/scalar_field_widgets.dart';
 import '../widgets/fields/signature_field.dart';
 import '../widgets/link_picker_field.dart';
+import '../widgets/workflow_action_button.dart';
+import 'document_action.dart';
 import 'form_field_support.dart';
 import 'record_workspace_chrome.dart';
 
@@ -278,6 +280,27 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     }
   }
 
+  /// Runs a host-contributed [DocumentAction] (e.g. a document conversion),
+  /// reusing the command bar's busy/error affordances. The action itself reaches
+  /// the engine via [ref] and typically navigates away on success; the `mounted`
+  /// guards cover the widget being torn down by that navigation.
+  Future<void> _invokeAction(DocumentAction action, Document current) async {
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      await action.invoke(context, ref, current);
+    } catch (e) {
+      if (mounted) {
+        setState(() =>
+            _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Future<void> _submit(DocumentEngine engine, Document current) async {
     setState(() {
       _isSaving = true;
@@ -322,9 +345,30 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
           final base = fetched ?? _emptyDoc();
           _maybeRecordRecent(base, metaAsync.valueOrNull?.docType);
           final doc = _apply(base);
-          final isSubmittable =
-              metaAsync.valueOrNull?.docType.isSubmittable ?? false;
+          final docType = metaAsync.valueOrNull?.docType;
+          final isSubmittable = docType?.isSubmittable ?? false;
           final docStatus = doc.docStatus;
+
+          // Host-contributed actions (e.g. document conversion). Resolved
+          // synchronously from the document's own fields once its DocType is
+          // known; the work runs in [_invokeAction]. Suppressed on a dirty draft
+          // so a conversion never reads stale, unsaved edits.
+          final extraActions = <Widget>[];
+          if (docType != null && !_isDirty) {
+            final actions = ref
+                .watch(documentActionRegistryProvider)
+                .actionsFor(doc, docType);
+            for (final action in actions) {
+              extraActions.add(WorkflowActionButton(
+                key: ValueKey('doc-action-${action.id}'),
+                label: action.label,
+                icon: action.icon,
+                style: action.style,
+                busy: _isSaving,
+                onPressed: () => _invokeAction(action, doc),
+              ));
+            }
+          }
 
           // Currency symbol prefix for `.currency` editors, resolved from the
           // document's `currency` link (re-resolves as the user changes it).
@@ -343,6 +387,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             onSave: () => _save(engine, doc, metaAsync.valueOrNull),
             onSubmit: () => _submit(engine, doc),
             error: _error,
+            extraActions: extraActions,
             child: metaAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),

@@ -20,6 +20,7 @@ class RecordWorkspaceChrome extends StatefulWidget {
     this.onCancel,
     this.onAmend,
     this.error,
+    this.extraActions = const <Widget>[],
   });
 
   final String docTypeName;
@@ -33,6 +34,9 @@ class RecordWorkspaceChrome extends StatefulWidget {
   final VoidCallback? onCancel;
   final VoidCallback? onAmend;
   final String? error;
+
+  /// Host-contributed command-bar actions, forwarded to [CommandBarView].
+  final List<Widget> extraActions;
   final Widget child;
 
   @override
@@ -97,6 +101,7 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
             onCancel: widget.onCancel,
             onAmend: widget.onAmend,
             error: widget.error,
+            extraActions: widget.extraActions,
           ),
           Expanded(
             child: TabBarView(
