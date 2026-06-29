@@ -232,7 +232,6 @@ class _FormBuilderViewState extends ConsumerState<FormBuilderView> {
 
   void _reorder(int oldIndex, int newIndex) {
     setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
       final d = _drafts.removeAt(oldIndex);
       _drafts.insert(newIndex, d);
       _dirty = true;
@@ -332,7 +331,7 @@ class _Canvas extends StatelessWidget {
               ? const Center(child: Text('No fields'))
               : ReorderableListView(
                   padding: const EdgeInsets.all(16),
-                  onReorder: onReorder,
+                  onReorderItem: onReorder,
                   children: [
                     for (final f in drafts)
                       GestureDetector(

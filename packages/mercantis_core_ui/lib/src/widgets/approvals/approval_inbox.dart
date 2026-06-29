@@ -27,7 +27,7 @@ class ApprovalInboxList extends ConsumerWidget {
       data: (entries) {
         final shown = limit == null ? entries : entries.take(limit!).toList();
         if (shown.isEmpty) {
-          return EmptyState(
+          return const EmptyState(
             title: 'All caught up',
             message: 'No approvals waiting for you.',
             icon: Icons.check_circle_outline,
@@ -121,7 +121,7 @@ class _ApprovalTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        StatusChip(
+                        const StatusChip(
                           label: 'Pending',
                           tone: StatusTone.pending,
                           dense: true,

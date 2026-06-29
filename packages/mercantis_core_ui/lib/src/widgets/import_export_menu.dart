@@ -65,6 +65,7 @@ class ImportExportMenu extends ConsumerWidget {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       _snack(context, 'Export failed: $e');
     }
   }
@@ -105,6 +106,7 @@ class ImportExportMenu extends ConsumerWidget {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       _snack(context, 'Import failed: $e');
     }
   }

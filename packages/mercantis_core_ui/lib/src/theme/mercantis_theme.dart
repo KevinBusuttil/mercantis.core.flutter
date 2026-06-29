@@ -46,26 +46,26 @@ class MercantisTheme {
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: MercantisRadius.rSm),
+        border: const OutlineInputBorder(borderRadius: MercantisRadius.rSm),
         filled: true,
         fillColor: cs.surfaceContainerLowest,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
       dividerTheme: DividerThemeData(color: cs.outlineVariant, thickness: 1, space: 1),
-      chipTheme: ChipThemeData(
+      chipTheme: const ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rPill),
         side: BorderSide.none,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
+          shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
+          shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           side: BorderSide(color: cs.outline),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
@@ -73,7 +73,7 @@ class MercantisTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
+          shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
@@ -96,9 +96,9 @@ class MercantisTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: cs.onSurfaceVariant,
-        shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
+        shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rMd),
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: const DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rLg),
       ),
     );

@@ -25,19 +25,26 @@ class SettingsView extends ConsumerWidget {
         children: [
           Text('Appearance', style: theme.textTheme.titleMedium),
           const SizedBox(height: 4),
-          for (final m in ThemeMode.values)
-            RadioListTile<ThemeMode>(
-              value: m,
-              groupValue: mode,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(themeModeProvider.notifier).setMode(v);
-                }
-              },
-              title: Text(_modeLabel(m)),
-              secondary: Icon(_modeIcon(m)),
-              contentPadding: EdgeInsets.zero,
+          RadioGroup<ThemeMode>(
+            groupValue: mode,
+            onChanged: (v) {
+              if (v != null) {
+                ref.read(themeModeProvider.notifier).setMode(v);
+              }
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final m in ThemeMode.values)
+                  RadioListTile<ThemeMode>(
+                    value: m,
+                    title: Text(_modeLabel(m)),
+                    secondary: Icon(_modeIcon(m)),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+              ],
             ),
+          ),
           if (appName != null || appVersion != null) ...[
             const Divider(height: 32),
             Text('About', style: theme.textTheme.titleMedium),

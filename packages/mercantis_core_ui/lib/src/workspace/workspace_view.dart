@@ -72,7 +72,7 @@ class WorkspaceView extends ConsumerWidget {
             const SliverToBoxAdapter(child: SizedBox(height: MercantisSpacing.xl)),
           ],
           if (descriptor.quickActions.isNotEmpty) ...[
-            SliverToBoxAdapter(
+            const SliverToBoxAdapter(
               child: _SectionHeader(label: 'Quick actions'),
             ),
             SliverToBoxAdapter(
@@ -174,7 +174,7 @@ class _CardGrid extends StatelessWidget {
       Breakpoint.medium => 4,
       Breakpoint.expanded => 4,
     };
-    final spacing = MercantisSpacing.md;
+    const spacing = MercantisSpacing.md;
     return LayoutBuilder(
       builder: (context, c) {
         final totalSpacing = spacing * (cols - 1);
@@ -207,7 +207,7 @@ class _QuickActionsRow extends StatelessWidget {
     final bp = Breakpoint.of(context);
     final cols = bp.isPhone ? 2 : (bp == Breakpoint.compact ? 3 : 4);
     return LayoutBuilder(builder: (context, c) {
-      final spacing = MercantisSpacing.md;
+      const spacing = MercantisSpacing.md;
       final colWidth = (c.maxWidth - spacing * (cols - 1)) / cols;
       return Wrap(
         spacing: spacing,
@@ -247,7 +247,7 @@ class _SectionGrid extends StatelessWidget {
     final cs = theme.colorScheme;
     final cols = bp.isPhone ? 1 : (bp == Breakpoint.compact ? 2 : 3);
     return LayoutBuilder(builder: (context, c) {
-      final spacing = MercantisSpacing.md;
+      const spacing = MercantisSpacing.md;
       final colWidth = (c.maxWidth - spacing * (cols - 1)) / cols;
       return Wrap(
         spacing: spacing,

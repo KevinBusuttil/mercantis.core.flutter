@@ -27,7 +27,9 @@ class MetadataApprovalInboxSource implements ApprovalInboxSource {
         operation: DocumentOperation.read,
         on: type,
         userRoles: userRoles,
-      )) continue;
+      )) {
+        continue;
+      }
 
       final docs = await engine.list(type.id, limit: 50);
       for (final d in docs) {

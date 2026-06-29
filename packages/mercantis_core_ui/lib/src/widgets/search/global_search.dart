@@ -70,7 +70,7 @@ class _GlobalSearchDialogState extends ConsumerState<_GlobalSearchDialog> {
     return Dialog(
       alignment: Alignment.topCenter,
       insetPadding: const EdgeInsets.fromLTRB(24, 80, 24, 24),
-      shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rLg),
+      shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rLg),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640, maxHeight: 520),
         child: Column(
@@ -112,7 +112,7 @@ class _GlobalSearchDialogState extends ConsumerState<_GlobalSearchDialog> {
                       ),
                     ),
                   if (navResults.isNotEmpty) ...[
-                    _SectionHeader(label: 'Navigate'),
+                    const _SectionHeader(label: 'Navigate'),
                     for (final r in navResults) _ResultTile(result: r, onTap: _open),
                   ],
                   if (_query.isNotEmpty)
