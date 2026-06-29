@@ -21,6 +21,7 @@ export 'src/document_engine/validation_pipeline.dart';
 // Storage
 export 'src/storage/mercantis_database.dart';
 export 'src/storage/migration_runner.dart';
+export 'src/storage/read_only_query.dart';
 
 // Permissions
 export 'src/permissions/permission_engine.dart';

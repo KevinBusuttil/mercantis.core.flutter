@@ -79,6 +79,7 @@ export 'src/navigation/navigation_shell.dart';
 
 // Document views (metadata-driven)
 export 'src/views/command_bar_view.dart';
+export 'src/views/data_browser_view.dart';
 export 'src/views/doc_type_list_view.dart';
 export 'src/views/form_builder_view.dart';
 export 'src/views/generic_form_view.dart';
