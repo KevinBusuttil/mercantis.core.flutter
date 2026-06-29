@@ -130,6 +130,18 @@ final _missingPrerequisitesProvider =
   return missing;
 });
 
+/// Resolves a currency code (the value of a `currency` link field) to its
+/// symbol, by convention: `currency` → `Currency` record → its `symbol` field.
+/// Drives the prefix on `.currency` editors. Port of Swift's `currencySymbol`.
+final _currencySymbolProvider =
+    FutureProvider.family<String?, String>((ref, currencyCode) async {
+  if (currencyCode.isEmpty) return null;
+  final engine = await ref.watch(documentEngineProvider.future);
+  final doc = await engine.fetch('Currency', currencyCode);
+  final symbol = doc?.payload['symbol'];
+  return (symbol is String && symbol.isNotEmpty) ? symbol : null;
+});
+
 class GenericFormView extends ConsumerStatefulWidget {
   const GenericFormView({
     super.key,
@@ -314,6 +326,13 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
               metaAsync.valueOrNull?.docType.isSubmittable ?? false;
           final docStatus = doc.docStatus;
 
+          // Currency symbol prefix for `.currency` editors, resolved from the
+          // document's `currency` link (re-resolves as the user changes it).
+          final currencyCode = doc.payload['currency'];
+          final currencySymbol = (currencyCode is String && currencyCode.isNotEmpty)
+              ? ref.watch(_currencySymbolProvider(currencyCode)).valueOrNull
+              : null;
+
           return RecordWorkspaceChrome(
             docTypeName: widget.docTypeName,
             documentName: doc.id.isEmpty ? null : doc.id,
@@ -341,6 +360,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                             readOnly: docStatus != 0,
                             sectionColumns: widget.sectionColumns,
                             errors: _fieldErrors,
+                            currencySymbol: currencySymbol,
                             onChanged: (k, v) => setState(() {
                               _changes[k] = v;
                               _touched.add(k);
@@ -401,6 +421,7 @@ class _MetaForm extends StatelessWidget {
     required this.onChanged,
     required this.onChildChanged,
     this.errors = const {},
+    this.currencySymbol,
     this.sectionColumns,
     this.linkSearchProvider,
     this.childDocTypeProvider,
@@ -412,6 +433,9 @@ class _MetaForm extends StatelessWidget {
   /// Inline validation errors keyed by field key — rendered as a footnote
   /// beneath the offending control.
   final Map<String, String> errors;
+
+  /// Symbol prefixed onto `.currency` editors (e.g. "€"), or null.
+  final String? currencySymbol;
   final void Function(String key, dynamic value) onChanged;
 
   /// Child-table edits (a full replacement row list for [key]).
@@ -560,6 +584,7 @@ class _MetaForm extends StatelessWidget {
       value: doc[f.key],
       readOnly: readOnly,
       onChanged: (v) => onChanged(f.key, v),
+      currencySymbol: currencySymbol,
       linkSearchProvider: linkSearchProvider,
       childDocTypeProvider: childDocTypeProvider,
     );
@@ -749,6 +774,7 @@ class FieldWidget extends StatelessWidget {
     required this.value,
     required this.readOnly,
     required this.onChanged,
+    this.currencySymbol,
     this.linkSearchProvider,
     this.childDocTypeProvider,
   });
@@ -756,6 +782,9 @@ class FieldWidget extends StatelessWidget {
   final dynamic value;
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
+
+  /// Symbol prefixed onto the editor when this is a `.currency` field.
+  final String? currencySymbol;
 
   /// Optional callback used by the link picker sheet to resolve
   /// search results. When `null` the picker falls back to a client-side
@@ -786,6 +815,7 @@ class FieldWidget extends StatelessWidget {
     String? hintText,
     Widget? suffixIcon,
     String? suffixText,
+    String? prefixText,
   }) {
     final inline = ChildTableContext.isInline(context);
     return InputDecoration(
@@ -797,6 +827,7 @@ class FieldWidget extends StatelessWidget {
       hintText: hintText ?? field.placeholder ?? (inline ? _label : null),
       suffixIcon: suffixIcon,
       suffixText: suffixText,
+      prefixText: prefixText,
       isDense: inline,
     );
   }
@@ -837,6 +868,7 @@ class FieldWidget extends StatelessWidget {
           decoration: _decoration(
             context,
             suffixText: field.type == FieldType.percent ? '%' : null,
+            prefixText: field.type == FieldType.currency ? currencySymbol : null,
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           readOnly: readOnly,

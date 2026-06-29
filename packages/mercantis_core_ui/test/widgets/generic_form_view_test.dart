@@ -163,6 +163,32 @@ void main() {
     expect(find.text('ACME Corp'), findsOneWidget);
     expect(find.text('Globex'), findsOneWidget);
   });
+
+  testWidgets('link picker offers inline create and opens a create sheet',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(wrap(const GenericFormView(
+      docTypeName: 'Demo Order',
+      documentName: null,
+    )));
+    await _drain(tester);
+
+    await tester.tap(find.text('Link to Customer'));
+    await _drain(tester);
+    expect(find.text('Select Customer'), findsOneWidget);
+
+    // The footer surfaces a "New Customer" action (inline create).
+    expect(find.text('New Customer'), findsOneWidget);
+    await tester.tap(find.text('New Customer'));
+    await _drain(tester);
+
+    // The inline create sheet opens and renders the target DocType's field.
+    expect(find.text('Create Customer'), findsOneWidget);
+    expect(find.text('Customer Name'), findsOneWidget);
+  });
 }
 
 /// `WidgetTester.pumpAndSettle` never settles here — the form's many
