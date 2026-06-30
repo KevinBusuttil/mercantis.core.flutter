@@ -205,7 +205,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
     );
   }
 
-  Widget _emptyDetail() => EmptyState(
+  Widget _emptyDetail() => const EmptyState(
         title: 'Nothing selected',
         message: 'Pick a record on the left to see details.',
         icon: Icons.touch_app_outlined,

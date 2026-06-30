@@ -1,6 +1,7 @@
 /// Declarative print formats and letter heads (ADR-044). Manifests declare a
 /// [PrintFormat] per (DocType, format-id) pair; the print subsystem renders one
 /// to bytes (plain text or PDF) for any document of that DocType.
+library;
 
 /// Output format requested from `PrintService.render(...)`.
 enum PrintOutputKind { plainText, pdf }

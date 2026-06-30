@@ -83,10 +83,14 @@ class Lexer {
   void _readNumber() {
     final start = _pos;
     if (_source[_pos] == '-') _pos++;
-    while (_pos < _source.length && _isDigit(_source[_pos])) _pos++;
+    while (_pos < _source.length && _isDigit(_source[_pos])) {
+      _pos++;
+    }
     if (_pos < _source.length && _source[_pos] == '.') {
       _pos++;
-      while (_pos < _source.length && _isDigit(_source[_pos])) _pos++;
+      while (_pos < _source.length && _isDigit(_source[_pos])) {
+        _pos++;
+      }
     }
     final numStr = _source.substring(start, _pos);
     _tokens.add(Token(TokenType.number_, num.parse(numStr), start));

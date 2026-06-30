@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 /// C4: `helpText` / `placeholder` field metadata must survive JSON round-trips

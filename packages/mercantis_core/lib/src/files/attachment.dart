@@ -1,5 +1,6 @@
 /// File attachments (ADR-043). Metadata for one row in the `attachments`
 /// table; the bytes themselves live on disk under the `AttachmentStore` root.
+library;
 
 /// A file attachment bound to a document (and optionally a specific field).
 /// Use `AttachmentManager.read` to materialise the bytes.

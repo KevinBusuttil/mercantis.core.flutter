@@ -44,14 +44,14 @@ void main() {
     });
 
     test('role gate hides admin workspace for non-Administrator', () {
-      final ctx = const PermissionContext(roles: ['Sales User']);
+      const ctx = PermissionContext(roles: ['Sales User']);
       final visible =
           const WorkspaceVisibilityFilter().apply(workspaces, ctx);
       expect(visible.map((w) => w.id), ['home', 'sales']);
     });
 
     test('docType permission hides individual items', () {
-      final ctx = const PermissionContext(
+      const ctx = PermissionContext(
         roles: ['Sales User'],
         docTypePermissions: {
           'Sales Order': {'read'},

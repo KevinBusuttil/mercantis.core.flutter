@@ -62,6 +62,7 @@ class PrintRecordButton extends ConsumerWidget {
       final registry = await ref.read(metadataRegistryProvider.future);
       final meta = await registry.get(docType);
       if (doc == null || meta == null) {
+        if (!context.mounted) return;
         _snack(context, 'Nothing to print');
         return;
       }
@@ -101,6 +102,7 @@ class PrintRecordButton extends ConsumerWidget {
           );
       }
     } catch (e) {
+      if (!context.mounted) return;
       _snack(context, 'Print failed: $e');
     }
   }

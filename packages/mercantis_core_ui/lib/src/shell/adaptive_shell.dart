@@ -25,7 +25,7 @@ class AdaptiveShell extends ConsumerWidget {
     final bp = Breakpoint.of(context);
     final visible = ref.watch(visibleWorkspacesProvider);
     if (visible.isEmpty) {
-      return Scaffold(body: Center(child: const Text('No workspaces registered')));
+      return const Scaffold(body: Center(child: Text('No workspaces registered')));
     }
     final selected = _selectedWorkspaceIndex(location, visible);
 
@@ -224,7 +224,7 @@ class _Brand extends StatelessWidget {
             const SizedBox(width: MercantisSpacing.lg),
             Container(
               width: 28, height: 28,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: MercantisBrandColors.primary,
                 borderRadius: MercantisRadius.rSm,
               ),
@@ -320,8 +320,8 @@ class _SidebarShell extends StatelessWidget {
               children: [
                 const _Brand(extended: true),
                 const SizedBox(height: MercantisSpacing.lg),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: MercantisSpacing.lg),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: MercantisSpacing.lg),
                   child: _SearchButton(extended: true),
                 ),
                 const SizedBox(height: MercantisSpacing.sm),
