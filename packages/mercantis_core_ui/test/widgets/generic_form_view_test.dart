@@ -154,10 +154,10 @@ void main() {
     )));
     await _drain(tester);
 
-    await tester.tap(find.text('Select Customer'));
+    await tester.tap(find.text('Choose Customer'));
     await _drain(tester);
 
-    expect(find.text('Search Customer'), findsOneWidget);
+    expect(find.text('Select Customer'), findsOneWidget);
     // The prefetched Customer DocType lets the picker resolve titles
     // from the registry's first string field — without it the picker
     // would still fall back to the candidate-key heuristic, but only
@@ -178,9 +178,9 @@ void main() {
     )));
     await _drain(tester);
 
-    await tester.tap(find.text('Select Customer'));
+    await tester.tap(find.text('Choose Customer'));
     await _drain(tester);
-    expect(find.text('Search Customer'), findsOneWidget);
+    expect(find.text('Select Customer'), findsOneWidget);
 
     // The footer surfaces a "New Customer" action (inline create).
     expect(find.text('New Customer'), findsOneWidget);
@@ -214,7 +214,7 @@ void main() {
       expect(tester.takeException(), isNull,
           reason: 'layout error at $size');
       // Header (link placeholder) + child grid both render at every width.
-      expect(find.text('Select Customer'), findsOneWidget);
+      expect(find.text('Choose Customer'), findsOneWidget);
       expect(find.text('Item Code'), findsOneWidget);
     }
   });
