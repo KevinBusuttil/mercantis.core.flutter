@@ -279,11 +279,17 @@ class SavedReportEngine {
     final groupKeyValues = <String, List<dynamic>>{};
     for (final doc in documents) {
       final values = [for (final g in savedReport.groupBy) _valueFor(doc, g)];
-      // Composite key from formatted values so distinct display labels bucket
-      // apart deterministically; the raw values drive the group cells.
-      final key = values
-          .map((v) => _formatter.format(v, type: null) ?? ' ')
-          .join('');
+      // Composite key from *typed* formatted values so bucket identity matches
+      // the displayed group label — e.g. a currency 100 and 100.0, or two date
+      // spellings of the same day, fold into one group. A control-char (unit)
+      // separator keeps multi-field keys unambiguous, and a NUL placeholder
+      // distinguishes an absent value. Raw values still drive the group cells.
+      final key = [
+        for (var i = 0; i < savedReport.groupBy.length; i++)
+          _formatter.format(values[i],
+                  type: _typeFor(docType, savedReport.groupBy[i])) ??
+              String.fromCharCode(0),
+      ].join(String.fromCharCode(31));
       groups.putIfAbsent(key, () => []).add(doc);
       groupKeyValues.putIfAbsent(key, () => values);
     }

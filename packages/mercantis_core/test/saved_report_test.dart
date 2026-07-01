@@ -426,6 +426,31 @@ void main() {
       expect(captured.predicates!.single.field, 'region');
     });
 
+    test('typed group keys fold values with the same displayed label', () async {
+      // Grouping a currency field: 100 (int) and 100.0 (double) both display as
+      // "100.00", so they must bucket into a single group (not two).
+      final engine = SavedReportEngine(
+        listerReturning([
+          inv('A', customer: 'Acme', total: 100, region: 'North'),
+          inv('B', customer: 'Beta', total: 100.0, region: 'South'),
+        ]),
+        registry,
+      );
+      final result = await engine.execute(SavedReportDefinition(
+        id: 'sr-gt',
+        name: 'By Total',
+        sourceDocType: 'Sales Invoice',
+        ownerUserId: owner,
+        groupBy: const ['grand_total'],
+        aggregates: const [
+          SavedReportAggregate(fn: SavedReportAggregateFunction.count),
+        ],
+      ));
+      expect(result.rows, [
+        ['100.00', '2'],
+      ]);
+    });
+
     test('builds a chart from the chosen aggregate', () async {
       final engine = SavedReportEngine(listerReturning(docs), registry);
       final result = await engine.execute(grouped(
