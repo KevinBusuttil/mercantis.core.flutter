@@ -94,6 +94,8 @@ void main() {
           type: FieldType.link,
           linkDocType: 'Customer',
         ),
+        FieldDefinition(key: 'reference', label: 'Reference', type: FieldType.data),
+        FieldDefinition(key: 'remarks', label: 'Remarks', type: FieldType.data),
         FieldDefinition(
           key: 'items',
           label: 'Items',
@@ -152,7 +154,7 @@ void main() {
     )));
     await _drain(tester);
 
-    await tester.tap(find.text('Link to Customer'));
+    await tester.tap(find.text('Choose Customer'));
     await _drain(tester);
 
     expect(find.text('Select Customer'), findsOneWidget);
@@ -176,7 +178,7 @@ void main() {
     )));
     await _drain(tester);
 
-    await tester.tap(find.text('Link to Customer'));
+    await tester.tap(find.text('Choose Customer'));
     await _drain(tester);
     expect(find.text('Select Customer'), findsOneWidget);
 
@@ -194,6 +196,27 @@ void main() {
           of: find.byType(Dialog), matching: find.byType(TextField)),
       findsWidgets,
     );
+  });
+
+  testWidgets(
+      'form renders without overflow at desktop and phone widths '
+      '(responsive two-column vs single-column)', (tester) async {
+    addTearDown(tester.view.reset);
+    for (final size in const [Size(1400, 1000), Size(480, 900)]) {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(wrap(const GenericFormView(
+        docTypeName: 'Demo Order',
+        documentName: null,
+      )));
+      await _drain(tester);
+      // A layout/overflow error would surface as a caught exception.
+      expect(tester.takeException(), isNull,
+          reason: 'layout error at $size');
+      // Header (link placeholder) + child grid both render at every width.
+      expect(find.text('Choose Customer'), findsOneWidget);
+      expect(find.text('Item Code'), findsOneWidget);
+    }
   });
 }
 

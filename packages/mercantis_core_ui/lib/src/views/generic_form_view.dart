@@ -435,10 +435,17 @@ class _SectionGroup {
   _SectionGroup({
     required this.name,
     required this.columns,
+    required this.explicit,
     required this.fields,
   });
   final String name;
   final int columns;
+
+  /// Whether [columns] was set explicitly by the caller's `sectionColumns`
+  /// (as opposed to the default). An explicit value — including an explicit
+  /// `1` that pins the group full-width — is honoured over the responsive
+  /// two-column default.
+  final bool explicit;
   final List<ResolvedFieldDefinition> fields;
 }
 
@@ -495,10 +502,12 @@ class _MetaForm extends StatelessWidget {
     final order = <String>[];
     for (final f in meta.visibleFields) {
       final key = f.section ?? '';
+      final explicit = sectionColumns?.containsKey(key) ?? false;
       final cols = sectionColumns?[key] ?? 1;
       final g = groups.putIfAbsent(key, () {
         order.add(key);
-        return _SectionGroup(name: key, columns: cols, fields: []);
+        return _SectionGroup(
+            name: key, columns: cols, explicit: explicit, fields: []);
       });
       g.fields.add(f);
     }
@@ -552,38 +561,55 @@ class _MetaForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groups = _groupedSections();
+    // Responsive layout: on a wide pane (tablet-landscape and desktop, ≥ 840px
+    // of *available* width — measured, not the screen, so it's correct inside a
+    // master-detail split) compact fields pair up into two columns so forms use
+    // the horizontal space instead of a tall single column. Narrow panes
+    // (phone / tablet-portrait) stay single-column. A caller that pinned a
+    // `sectionColumns` count still wins. Stacked field types (tables, long text,
+    // attachments, …) always span full width via `_paired`/`_usesStackedLayout`.
     // Sheet surface shows through directly — no muted backdrop. Cards
     // differentiate via stroke alone, matching the modern HIG sheet
     // pattern PR #124 adopted on the Swift side.
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final g in groups) ...[
-            _SectionCard(
-              name: g.name,
-              containsTable: _containsTable(g),
-              child: g.columns >= 2
-                  ? _TwoColumnLayout(
-                      rows: _paired(g.fields),
-                      buildField: (f, stacked) => _buildField(f, stacked),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final f in g.fields)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildField(f, _usesStackedLayout(f)),
-                          ),
-                      ],
-                    ),
-            ),
-            const SizedBox(height: 14),
-          ],
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 840;
+        // Honour an explicit per-section override (including an explicit `1`
+        // that pins a group full-width); apply the responsive two-column
+        // default only where the caller didn't specify a count.
+        int columnsFor(_SectionGroup g) =>
+            g.explicit ? g.columns : (wide ? 2 : 1);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final g in groups) ...[
+                _SectionCard(
+                  name: g.name,
+                  containsTable: _containsTable(g),
+                  child: columnsFor(g) >= 2
+                      ? _TwoColumnLayout(
+                          rows: _paired(g.fields),
+                          buildField: (f, stacked) => _buildField(f, stacked),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final f in g.fields)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _buildField(f, _usesStackedLayout(f)),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 14),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
