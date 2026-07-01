@@ -20,6 +20,50 @@ typedef LinkSearchProvider = List<Document> Function(
   String query,
 );
 
+/// Derives a human title for [doc] — mirrors Swift's `primaryLabel(for:)`.
+/// Prefers the target DocType's first string field (via [metaDocType], when a
+/// resolver supplied it), then a canonical name key, then (optionally) any
+/// non-id string, and finally the raw id. Top-level so both the field's
+/// selected-value display and the picker sheet's result rows share one
+/// definition.
+String deriveLinkLabel(Document doc, DocType? metaDocType,
+    {bool allowAnyString = true}) {
+  const candidateKeys = [
+    'customer_name',
+    'supplier_name',
+    'item_name',
+    'lead_name',
+    'first_name',
+    'name1',
+    'title',
+    'display_name',
+    'name',
+    'address_title',
+    'label',
+  ];
+  if (metaDocType != null) {
+    for (final field in metaDocType.fields) {
+      if (field.type != FieldType.data &&
+          field.type != FieldType.text &&
+          field.type != FieldType.smallText) {
+        continue;
+      }
+      final v = doc.payload[field.key];
+      if (v is String && v.isNotEmpty && v != doc.id) return v;
+    }
+  }
+  for (final key in candidateKeys) {
+    final v = doc.payload[key];
+    if (v is String && v.isNotEmpty && v != doc.id) return v;
+  }
+  if (allowAnyString) {
+    for (final v in doc.payload.values) {
+      if (v is String && v.isNotEmpty && v != doc.id) return v;
+    }
+  }
+  return doc.id;
+}
+
 /// Compact text + button surface for `FieldType.link` values. Tapping
 /// the surface opens a search sheet that mirrors the macOS rewrite from
 /// Swift PR #120:
@@ -126,8 +170,13 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
         // Skip the fuzzy "any string field" fallback: for a document link
         // (e.g. a Sales Invoice) the id itself is the meaningful label, so we
         // only substitute a title when the target has a real name field.
-        _displayTitle =
-            doc == null ? null : _primaryLabel(doc, allowAnyString: false);
+        _displayTitle = doc == null
+            ? null
+            : deriveLinkLabel(
+                doc,
+                widget.targetDocTypeResolver?.call(widget.targetDocType),
+                allowAnyString: false,
+              );
       });
     } catch (_) {
       // Leave unresolved → the raw id shows as a fallback.
@@ -318,48 +367,9 @@ class _LinkPickerSheetState extends ConsumerState<_LinkPickerSheet> {
     }).toList();
   }
 
-  /// Mirrors Swift's `primaryLabel(for:)`. Prefers a canonical
-  /// title-field key, then falls back to the registry's first string
-  /// field (when a resolver is supplied), then to the raw id.
-  String _primaryLabel(Document doc, {bool allowAnyString = true}) {
-    const candidateKeys = [
-      'customer_name',
-      'supplier_name',
-      'item_name',
-      'lead_name',
-      'first_name',
-      'name1',
-      'title',
-      'display_name',
-      'name',
-      'address_title',
-      'label',
-    ];
-    final docType = widget.targetDocTypeResolver?.call(widget.targetDocType);
-    if (docType != null) {
-      for (final field in docType.fields) {
-        if (field.type != FieldType.data &&
-            field.type != FieldType.text &&
-            field.type != FieldType.smallText) {
-          continue;
-        }
-        final v = doc.payload[field.key];
-        if (v is String && v.isNotEmpty && v != doc.id) {
-          return v;
-        }
-      }
-    }
-    for (final key in candidateKeys) {
-      final v = doc.payload[key];
-      if (v is String && v.isNotEmpty && v != doc.id) return v;
-    }
-    if (allowAnyString) {
-      for (final v in doc.payload.values) {
-        if (v is String && v.isNotEmpty && v != doc.id) return v;
-      }
-    }
-    return doc.id;
-  }
+  /// Human title for a result row — delegates to the shared [deriveLinkLabel].
+  String _primaryLabel(Document doc) => deriveLinkLabel(
+      doc, widget.targetDocTypeResolver?.call(widget.targetDocType));
 
   /// Opens the inline create sheet; on success pops the picker with the new
   /// record's id so the field selects it immediately.
