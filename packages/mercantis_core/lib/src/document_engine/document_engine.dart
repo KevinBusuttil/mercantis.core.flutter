@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:sqflite_common/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../metadata/doc_type.dart';
+import '../metadata/field_definition.dart';
 import '../metadata/metadata_registry.dart';
 import '../metadata/meta_composer.dart';
 import '../permissions/permission_engine.dart';
@@ -120,6 +121,12 @@ class DocumentEngine {
     for (final interceptor in _interceptors) {
       await interceptor.beforeSave(this, doc, docType, isNew: isNew);
     }
+
+    // Declarative field derivation (C8): coerce empty numerics to null, fetch
+    // `fetchFrom` values from linked documents, and recompute formula fields —
+    // on the header and every child row — so what validates and persists is the
+    // derived document, not the raw input.
+    await _deriveFields(doc, docType);
 
     // Optimistic concurrency check
     if (doc.id.isNotEmpty) {
@@ -249,6 +256,98 @@ class DocumentEngine {
     _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
+  }
+
+  // MARK: declarative field derivation (C8)
+
+  static const Set<FieldType> _numericFieldTypes = {
+    FieldType.integer,
+    FieldType.float,
+    FieldType.currency,
+    FieldType.percent,
+  };
+
+  /// Runs the three derivation passes over the header and each child row, in
+  /// order: numeric-null coercion → fetchFrom → formula recompute (so a formula
+  /// can consume a freshly fetched or coerced value).
+  Future<void> _deriveFields(Document doc, DocType docType) async {
+    Future<void> derive(Map<String, dynamic> payload, DocType dt) async {
+      _coerceNumericNulls(payload, dt);
+      await _applyFetchFrom(payload, dt);
+      _applyFormulas(payload, dt);
+    }
+
+    await derive(doc.payload, docType);
+    for (final entry in doc.children.entries) {
+      final childType = await _childTypeForTableField(docType, entry.key);
+      if (childType == null) continue;
+      for (final row in entry.value) {
+        await derive(row.payload, childType);
+      }
+    }
+  }
+
+  /// An empty string in a numeric field would persist as `""` and break
+  /// downstream numeric parsing / SQL comparisons — store `null` instead.
+  void _coerceNumericNulls(Map<String, dynamic> payload, DocType dt) {
+    for (final f in dt.fields) {
+      if (!_numericFieldTypes.contains(f.type)) continue;
+      final v = payload[f.key];
+      if (v is String && v.trim().isEmpty) payload[f.key] = null;
+    }
+  }
+
+  /// Populates every `fetchFrom` field from the linked document it references.
+  Future<void> _applyFetchFrom(Map<String, dynamic> payload, DocType dt) async {
+    for (final f in dt.fields) {
+      final spec = f.fetchFrom;
+      if (spec == null || spec.isEmpty) continue;
+      final dot = spec.indexOf('.');
+      if (dot <= 0 || dot >= spec.length - 1) continue;
+      final linkKey = spec.substring(0, dot);
+      final sourceKey = spec.substring(dot + 1);
+      final linkValue = payload[linkKey];
+      if (linkValue == null || linkValue == '') continue;
+      final linkField = _fieldByKey(dt, linkKey);
+      final targetDocType = linkField?.linkDocType;
+      if (targetDocType == null) continue;
+      final linked = await _fetchRaw(targetDocType, linkValue.toString());
+      if (linked == null) continue;
+      payload[f.key] = linked.payload[sourceKey];
+    }
+  }
+
+  /// Recomputes every `formulaExpression` field against the (already coerced +
+  /// fetched) payload. An expression that throws leaves the prior value intact.
+  void _applyFormulas(Map<String, dynamic> payload, DocType dt) {
+    for (final f in dt.fields) {
+      final expr = f.formulaExpression;
+      if (expr == null || expr.isEmpty) continue;
+      try {
+        final value = _expressionEvaluator.evaluateValue(
+            expr, EvaluationContext(fields: payload));
+        if (value != null) payload[f.key] = value;
+      } catch (_) {
+        // Leave the existing value when the formula can't be evaluated.
+      }
+    }
+  }
+
+  static FieldDefinition? _fieldByKey(DocType dt, String key) {
+    for (final f in dt.fields) {
+      if (f.key == key) return f;
+    }
+    return null;
+  }
+
+  /// Resolves the child DocType backing a parent's table field (matched by the
+  /// table field's `key`), or null if the field/child type isn't found.
+  Future<DocType?> _childTypeForTableField(
+      DocType parent, String tableFieldKey) async {
+    final field = _fieldByKey(parent, tableFieldKey);
+    final childName = field?.tableDocType;
+    if (childName == null || childName.isEmpty) return null;
+    return _registry.get(childName);
   }
 
   /// Applies field changes to an already-submitted (docStatus == 1) document,
