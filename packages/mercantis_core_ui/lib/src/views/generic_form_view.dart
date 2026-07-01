@@ -552,38 +552,52 @@ class _MetaForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groups = _groupedSections();
+    // Responsive layout: on a wide pane (tablet-landscape and desktop, ≥ 840px
+    // of *available* width — measured, not the screen, so it's correct inside a
+    // master-detail split) compact fields pair up into two columns so forms use
+    // the horizontal space instead of a tall single column. Narrow panes
+    // (phone / tablet-portrait) stay single-column. A caller that pinned a
+    // `sectionColumns` count still wins. Stacked field types (tables, long text,
+    // attachments, …) always span full width via `_paired`/`_usesStackedLayout`.
     // Sheet surface shows through directly — no muted backdrop. Cards
     // differentiate via stroke alone, matching the modern HIG sheet
     // pattern PR #124 adopted on the Swift side.
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final g in groups) ...[
-            _SectionCard(
-              name: g.name,
-              containsTable: _containsTable(g),
-              child: g.columns >= 2
-                  ? _TwoColumnLayout(
-                      rows: _paired(g.fields),
-                      buildField: (f, stacked) => _buildField(f, stacked),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final f in g.fields)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildField(f, _usesStackedLayout(f)),
-                          ),
-                      ],
-                    ),
-            ),
-            const SizedBox(height: 14),
-          ],
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 840;
+        int columnsFor(_SectionGroup g) =>
+            g.columns >= 2 ? g.columns : (wide ? 2 : 1);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final g in groups) ...[
+                _SectionCard(
+                  name: g.name,
+                  containsTable: _containsTable(g),
+                  child: columnsFor(g) >= 2
+                      ? _TwoColumnLayout(
+                          rows: _paired(g.fields),
+                          buildField: (f, stacked) => _buildField(f, stacked),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final f in g.fields)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _buildField(f, _usesStackedLayout(f)),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 14),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
