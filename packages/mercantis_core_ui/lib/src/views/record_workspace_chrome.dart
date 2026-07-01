@@ -85,56 +85,65 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= _kSidePanelMinWidth;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.documentName ?? 'New ${widget.docTypeName}'),
-        actions: [
-          PrintRecordButton(
-            docType: widget.docTypeName,
-            documentId: widget.documentName,
-          ),
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: 'Customize fields',
-            onPressed: () => showCustomizeFieldsDialog(
-              context,
-              docTypeName: widget.docTypeName,
-            ),
-          ),
-        ],
-        // On wide panes the timeline/attachments live in the side panel, so
-        // the main tab bar collapses to just the form (i.e. no tab bar).
-        bottom: wide
-            ? null
-            : TabBar(
-                controller: _tabs,
-                tabs: const [
-                  Tab(text: 'Form'),
-                  Tab(text: 'Timeline'),
-                  Tab(text: 'Attachments'),
-                ],
+    // Base the side-panel breakpoint on the record chrome's OWN width, not the
+    // window. In constrained shells (the medium rail shell, the /list
+    // ResponsiveSplit detail pane) the record pane is narrower than the window,
+    // so MediaQuery would pick the wide layout — and the fixed 320px side panel
+    // would cramp or overflow the form — even though the pane can't fit it.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= _kSidePanelMinWidth;
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(widget.documentName ?? 'New ${widget.docTypeName}'),
+            actions: [
+              PrintRecordButton(
+                docType: widget.docTypeName,
+                documentId: widget.documentName,
               ),
-      ),
-      body: Column(
-        children: [
-          CommandBarView(
-            docTypeName: widget.docTypeName,
-            documentName: widget.documentName,
-            isDirty: widget.isDirty,
-            isSaving: widget.isSaving,
-            isSubmittable: widget.isSubmittable,
-            docStatus: widget.docStatus,
-            onSave: widget.onSave,
-            onSubmit: widget.onSubmit,
-            onCancel: widget.onCancel,
-            onAmend: widget.onAmend,
-            error: widget.error,
-            extraActions: widget.extraActions,
+              IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Customize fields',
+                onPressed: () => showCustomizeFieldsDialog(
+                  context,
+                  docTypeName: widget.docTypeName,
+                ),
+              ),
+            ],
+            // On wide panes the timeline/attachments live in the side panel, so
+            // the main tab bar collapses to just the form (i.e. no tab bar).
+            bottom: wide
+                ? null
+                : TabBar(
+                    controller: _tabs,
+                    tabs: const [
+                      Tab(text: 'Form'),
+                      Tab(text: 'Timeline'),
+                      Tab(text: 'Attachments'),
+                    ],
+                  ),
           ),
-          Expanded(child: wide ? _wideBody(context) : _tabbedBody()),
-        ],
-      ),
+          body: Column(
+            children: [
+              CommandBarView(
+                docTypeName: widget.docTypeName,
+                documentName: widget.documentName,
+                isDirty: widget.isDirty,
+                isSaving: widget.isSaving,
+                isSubmittable: widget.isSubmittable,
+                docStatus: widget.docStatus,
+                onSave: widget.onSave,
+                onSubmit: widget.onSubmit,
+                onCancel: widget.onCancel,
+                onAmend: widget.onAmend,
+                error: widget.error,
+                extraActions: widget.extraActions,
+              ),
+              Expanded(child: wide ? _wideBody(context) : _tabbedBody()),
+            ],
+          ),
+        );
+      },
     );
   }
 
