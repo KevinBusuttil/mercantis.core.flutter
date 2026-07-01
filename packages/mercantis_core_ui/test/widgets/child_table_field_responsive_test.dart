@@ -65,14 +65,18 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('wide pane renders the full grid (column headers) without overflow',
+  testWidgets('wide pane renders the full grid header row without overflow',
       (tester) async {
     await pumpAt(tester, const Size(1100, 900));
     expect(tester.takeException(), isNull);
-    // Grid header labels are present on wide panes.
-    expect(find.text('Item Code'), findsOneWidget);
-    expect(find.text('Qty'), findsOneWidget);
-    expect(find.text('Amount'), findsOneWidget);
+    // The "#" index label appears only in the grid header row (card mode uses
+    // numbered chips instead), so it uniquely proves the grid rendered.
+    expect(find.text('#'), findsOneWidget);
+    // Column labels are present. They're also echoed as each data cell's hint
+    // text (kept in the tree even when the cell has a value), so match
+    // one-or-more rather than a strict count.
+    expect(find.text('Item Code'), findsWidgets);
+    expect(find.text('Amount'), findsWidgets);
   });
 
   testWidgets(
@@ -80,9 +84,11 @@ void main() {
       'without overflow', (tester) async {
     await pumpAt(tester, const Size(380, 900));
     expect(tester.takeException(), isNull);
-    // The grid header is gone; each row is a summary card titled by its first
-    // text value, with the featured currency amount shown to two decimals.
+    // No grid header row on a narrow pane...
+    expect(find.text('#'), findsNothing);
     expect(find.text('Item Code'), findsNothing);
+    // ...instead each row is a summary card titled by its first text value,
+    // with the featured currency amount shown to two decimals.
     expect(find.text('WIDGET'), findsOneWidget);
     expect(find.text('GADGET'), findsOneWidget);
     expect(find.text('36.00'), findsOneWidget);
