@@ -344,4 +344,176 @@ void main() {
     expect(result.rowCount, 1);
     expect(result.rows.single, ['Globex', '900.00']);
   });
+
+  group('grouping + aggregates + charts (C7)', () {
+    SavedReportDefinition grouped({
+      List<String> groupBy = const ['region'],
+      List<SavedReportAggregate> aggregates = const [
+        SavedReportAggregate(fn: SavedReportAggregateFunction.count),
+        SavedReportAggregate(
+            fieldKey: 'grand_total', fn: SavedReportAggregateFunction.sum),
+        SavedReportAggregate(
+            fieldKey: 'grand_total', fn: SavedReportAggregateFunction.avg),
+      ],
+      SavedReportChart? chart,
+    }) =>
+        SavedReportDefinition(
+          id: 'sr-g',
+          name: 'By Region',
+          sourceDocType: 'Sales Invoice',
+          ownerUserId: owner,
+          groupBy: groupBy,
+          aggregates: aggregates,
+          chart: chart,
+        );
+
+    final docs = [
+      inv('A', customer: 'Acme', total: 100, region: 'North'),
+      inv('B', customer: 'Beta', total: 200, region: 'North'),
+      inv('C', customer: 'Gamma', total: 50, region: 'South'),
+    ];
+
+    test('groups rows and folds count/sum/avg per group', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      final result = await engine.execute(grouped());
+
+      expect(result.columnLabels,
+          ['Region', 'Count', 'sum(grand_total)', 'avg(grand_total)']);
+      // Groups sorted ascending by key: North then South.
+      expect(result.rows, [
+        ['North', '2', '300', '150'],
+        ['South', '1', '50', '50'],
+      ]);
+    });
+
+    test('aggregate-only guard: numeric folds skip non-numeric/empty groups',
+        () async {
+      final engine = SavedReportEngine(
+        listerReturning([
+          inv('A', customer: 'Acme', total: 10, region: 'North'),
+          inv('B', customer: 'Beta', total: 30, region: 'North'),
+        ]),
+        registry,
+      );
+      final result = await engine.execute(grouped(aggregates: const [
+        SavedReportAggregate(
+            fieldKey: 'grand_total', fn: SavedReportAggregateFunction.min),
+        SavedReportAggregate(
+            fieldKey: 'grand_total', fn: SavedReportAggregateFunction.max),
+      ]));
+      expect(result.rows.single, ['North', '10', '30']);
+    });
+
+    test('a stored filter still narrows the grouped population', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      await engine.execute(SavedReportDefinition(
+        id: 'sr-gf',
+        name: 'By Region (North only)',
+        sourceDocType: 'Sales Invoice',
+        ownerUserId: owner,
+        groupBy: const ['region'],
+        aggregates: const [
+          SavedReportAggregate(fn: SavedReportAggregateFunction.count),
+        ],
+        filters: const [
+          SavedReportFilter(
+              fieldKey: 'region',
+              op: SavedReportFilterOperator.equals,
+              value: 'North'),
+        ],
+      ));
+      expect(captured.predicates, hasLength(1));
+      expect(captured.predicates!.single.field, 'region');
+    });
+
+    test('typed group keys fold values with the same displayed label', () async {
+      // Grouping a currency field: 100 (int) and 100.0 (double) both display as
+      // "100.00", so they must bucket into a single group (not two).
+      final engine = SavedReportEngine(
+        listerReturning([
+          inv('A', customer: 'Acme', total: 100, region: 'North'),
+          inv('B', customer: 'Beta', total: 100.0, region: 'South'),
+        ]),
+        registry,
+      );
+      final result = await engine.execute(SavedReportDefinition(
+        id: 'sr-gt',
+        name: 'By Total',
+        sourceDocType: 'Sales Invoice',
+        ownerUserId: owner,
+        groupBy: const ['grand_total'],
+        aggregates: const [
+          SavedReportAggregate(fn: SavedReportAggregateFunction.count),
+        ],
+      ));
+      expect(result.rows, [
+        ['100.00', '2'],
+      ]);
+    });
+
+    test('builds a chart from the chosen aggregate', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      final result = await engine.execute(grouped(
+        chart: const SavedReportChart(
+            type: SavedReportChartType.bar,
+            categoryFieldKey: 'region',
+            aggregateIndex: 1), // sum(grand_total)
+      ));
+      final chart = result.chart!;
+      expect(chart.type, 'bar');
+      expect(chart.categoryLabel, 'Region');
+      expect(chart.valueLabel, 'sum(grand_total)');
+      expect(chart.categories, ['North', 'South']);
+      expect(chart.values, [300, 50]);
+    });
+
+    test('rejects a chart whose category is not a grouped field', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      expect(
+        () => engine.execute(grouped(
+            chart: const SavedReportChart(categoryFieldKey: 'customer'))),
+        throwsA(isA<SavedReportException>()),
+      );
+    });
+
+    test('rejects a chart aggregate index out of range', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      expect(
+        () => engine.execute(grouped(
+            chart: const SavedReportChart(
+                categoryFieldKey: 'region', aggregateIndex: 9))),
+        throwsA(isA<SavedReportException>()),
+      );
+    });
+
+    test('rejects an aggregate over an unknown field', () async {
+      final engine = SavedReportEngine(listerReturning(docs), registry);
+      expect(
+        () => engine.execute(grouped(aggregates: const [
+          SavedReportAggregate(
+              fieldKey: 'nope', fn: SavedReportAggregateFunction.sum),
+        ])),
+        throwsA(isA<SavedReportException>()),
+      );
+    });
+
+    test('groupBy + aggregates + chart survive JSON round-trip', () {
+      final def = grouped(
+          chart: const SavedReportChart(
+              type: SavedReportChartType.pie,
+              categoryFieldKey: 'region',
+              aggregateIndex: 2));
+      final back = SavedReportDefinition.fromJson(def.toJson());
+      expect(back.isGrouped, isTrue);
+      expect(back.groupBy, ['region']);
+      expect(back.aggregates.map((a) => a.fn).toList(), [
+        SavedReportAggregateFunction.count,
+        SavedReportAggregateFunction.sum,
+        SavedReportAggregateFunction.avg,
+      ]);
+      expect(back.chart!.type, SavedReportChartType.pie);
+      expect(back.chart!.categoryFieldKey, 'region');
+      expect(back.chart!.aggregateIndex, 2);
+    });
+  });
 }

@@ -116,6 +116,86 @@ class SavedReportFilter {
       };
 }
 
+/// The aggregation applied when a saved report groups its rows (C7). Mirrors
+/// the Swift `SavedReportAggregateFunction`.
+enum SavedReportAggregateFunction { count, sum, avg, min, max }
+
+/// One aggregate column of a grouped saved report. For [count] the [fieldKey]
+/// is ignored (the group's rows are counted); the numeric functions fold the
+/// values of [fieldKey] within each group, skipping non-numeric/null cells.
+class SavedReportAggregate {
+  final String fieldKey;
+  final SavedReportAggregateFunction fn;
+
+  /// Header text to show instead of the derived "fn(fieldKey)" / "Count".
+  final String? labelOverride;
+
+  const SavedReportAggregate({
+    this.fieldKey = '',
+    this.fn = SavedReportAggregateFunction.sum,
+    this.labelOverride,
+  });
+
+  /// The header this aggregate contributes: the override, else `Count` for a
+  /// count and `fn(fieldKey)` for the numeric folds.
+  String get resolvedLabel =>
+      labelOverride ??
+      (fn == SavedReportAggregateFunction.count
+          ? 'Count'
+          : '${fn.name}($fieldKey)');
+
+  factory SavedReportAggregate.fromJson(Map<String, dynamic> json) =>
+      SavedReportAggregate(
+        fieldKey: json['fieldKey'] as String? ?? '',
+        fn: _enumByName(SavedReportAggregateFunction.values,
+            json['function'] as String?, SavedReportAggregateFunction.sum),
+        labelOverride: json['labelOverride'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'fieldKey': fieldKey,
+        'function': fn.name,
+        if (labelOverride != null) 'labelOverride': labelOverride,
+      };
+}
+
+/// The kind of chart a grouped saved report renders.
+enum SavedReportChartType { bar, line, pie }
+
+/// A chart derived from a grouped saved report (C7): one bar/line point/slice
+/// per group, its value taken from the aggregate at [aggregateIndex].
+class SavedReportChart {
+  final SavedReportChartType type;
+
+  /// The group field whose values label the chart categories. Must be one of
+  /// the report's [SavedReportDefinition.groupBy] keys.
+  final String categoryFieldKey;
+
+  /// Index into [SavedReportDefinition.aggregates] supplying each category's
+  /// value.
+  final int aggregateIndex;
+
+  const SavedReportChart({
+    this.type = SavedReportChartType.bar,
+    required this.categoryFieldKey,
+    this.aggregateIndex = 0,
+  });
+
+  factory SavedReportChart.fromJson(Map<String, dynamic> json) =>
+      SavedReportChart(
+        type: _enumByName(SavedReportChartType.values, json['type'] as String?,
+            SavedReportChartType.bar),
+        categoryFieldKey: json['categoryFieldKey'] as String,
+        aggregateIndex: json['aggregateIndex'] as int? ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'categoryFieldKey': categoryFieldKey,
+        'aggregateIndex': aggregateIndex,
+      };
+}
+
 /// A column in a saved report. [order] drives left-to-right placement;
 /// `visible == false` hides the column without losing its configuration.
 class SavedReportColumn {
@@ -176,6 +256,20 @@ class SavedReportDefinition {
   final List<SavedReportColumn> columns;
   final List<SavedReportFilter> filters;
   final List<SavedReportSort> sorts;
+
+  /// Field keys the report groups by (C7). When non-empty the report executes
+  /// as a grouped/aggregated report: one output row per distinct group, with an
+  /// [aggregates] column set instead of the raw [columns].
+  final List<String> groupBy;
+
+  /// Aggregate columns computed per group. Only consulted when [groupBy] is
+  /// non-empty.
+  final List<SavedReportAggregate> aggregates;
+
+  /// Optional chart over the grouped result. Only consulted when [groupBy] and
+  /// [aggregates] are non-empty.
+  final SavedReportChart? chart;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -189,6 +283,9 @@ class SavedReportDefinition {
     this.columns = const [],
     this.filters = const [],
     this.sorts = const [],
+    this.groupBy = const [],
+    this.aggregates = const [],
+    this.chart,
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : id = id ?? const Uuid().v4(),
@@ -205,6 +302,9 @@ class SavedReportDefinition {
       });
     return indexed.map((e) => e.value).toList();
   }
+
+  /// Whether this report executes as a grouped/aggregated report (C7).
+  bool get isGrouped => groupBy.isNotEmpty && aggregates.isNotEmpty;
 
   /// Ownership/visibility gate. `private` reports are reachable only by their
   /// owner; `shared` reports are reachable by anyone (document-level access is
@@ -268,6 +368,19 @@ class SavedReportDefinition {
                     SavedReportSort.fromJson(Map<String, dynamic>.from(s as Map)))
                 .toList() ??
             const [],
+        groupBy: (json['groupBy'] as List<dynamic>?)
+                ?.map((g) => g as String)
+                .toList() ??
+            const [],
+        aggregates: (json['aggregates'] as List<dynamic>?)
+                ?.map((a) => SavedReportAggregate.fromJson(
+                    Map<String, dynamic>.from(a as Map)))
+                .toList() ??
+            const [],
+        chart: json['chart'] == null
+            ? null
+            : SavedReportChart.fromJson(
+                Map<String, dynamic>.from(json['chart'] as Map)),
         createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),
         updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
@@ -284,6 +397,10 @@ class SavedReportDefinition {
         'columns': columns.map((c) => c.toJson()).toList(),
         'filters': filters.map((f) => f.toJson()).toList(),
         'sorts': sorts.map((s) => s.toJson()).toList(),
+        if (groupBy.isNotEmpty) 'groupBy': groupBy,
+        if (aggregates.isNotEmpty)
+          'aggregates': aggregates.map((a) => a.toJson()).toList(),
+        if (chart != null) 'chart': chart!.toJson(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
