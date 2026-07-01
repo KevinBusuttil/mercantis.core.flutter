@@ -194,9 +194,10 @@ class FieldFootnote extends StatelessWidget {
 
 /// Non-blocking banner shown above a create/edit form when the document depends
 /// on master data that doesn't exist yet. Purely informational — it points the
-/// user at what to set up first rather than blocking the form. Port of Swift
+/// user at what to set up first rather than blocking the form, and can be
+/// dismissed for the session once acknowledged. Port of Swift
 /// `PrerequisiteBanner`.
-class PrerequisiteBanner extends StatelessWidget {
+class PrerequisiteBanner extends StatefulWidget {
   const PrerequisiteBanner({
     super.key,
     required this.docTypeName,
@@ -207,39 +208,56 @@ class PrerequisiteBanner extends StatelessWidget {
   final List<MissingPrerequisite> missing;
 
   @override
+  State<PrerequisiteBanner> createState() => _PrerequisiteBannerState();
+}
+
+class _PrerequisiteBannerState extends State<PrerequisiteBanner> {
+  bool _dismissed = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (missing.isEmpty) return const SizedBox.shrink();
+    if (widget.missing.isEmpty || _dismissed) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    final names = FormPrerequisites.phrase([for (final m in missing) m.displayName]);
+    final names = FormPrerequisites.phrase(
+        [for (final m in widget.missing) m.displayName]);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
       ),
+      // Compact single row: nudge on the left, a dismiss affordance on the
+      // right. It never blocks Save — it just says what to set up first.
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.lightbulb_outline,
               size: 18, color: theme.colorScheme.primary),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Set up your basics first',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(
-                  'Before you can save a $docTypeName, add at least one $names. '
-                  'You can do that from the matching workspace in the sidebar.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Set up '),
+                  TextSpan(
+                    text: names,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(
+                    text: ' first to save this ${widget.docTypeName}.',
+                  ),
+                ],
+              ),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Dismiss',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => setState(() => _dismissed = true),
           ),
         ],
       ),
