@@ -200,23 +200,35 @@ void main() {
 
   testWidgets(
       'form renders without overflow at desktop and phone widths '
-      '(responsive two-column vs single-column)', (tester) async {
+      '(two-column grid on wide, single-column cards on narrow)',
+      (tester) async {
     addTearDown(tester.view.reset);
-    for (final size in const [Size(1400, 1000), Size(480, 900)]) {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1;
-      await tester.pumpWidget(wrap(const GenericFormView(
-        docTypeName: 'Demo Order',
-        documentName: null,
-      )));
-      await _drain(tester);
-      // A layout/overflow error would surface as a caught exception.
-      expect(tester.takeException(), isNull,
-          reason: 'layout error at $size');
-      // Header (link placeholder) + child grid both render at every width.
-      expect(find.text('Choose Customer'), findsOneWidget);
-      expect(find.text('Item Code'), findsOneWidget);
-    }
+
+    // Wide: two-column field layout + the child table renders as a full grid,
+    // so its column header ("Item Code") is visible.
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    await tester.pumpWidget(wrap(const GenericFormView(
+      docTypeName: 'Demo Order',
+      documentName: null,
+    )));
+    await _drain(tester);
+    expect(tester.takeException(), isNull, reason: 'layout error at 1400');
+    expect(find.text('Choose Customer'), findsOneWidget);
+    expect(find.text('Item Code'), findsOneWidget);
+
+    // Narrow: single-column field layout; the child table collapses to card
+    // mode, so the grid header is gone but the field still renders without
+    // overflow (no rows on a fresh doc → the empty-state).
+    tester.view.physicalSize = const Size(480, 900);
+    await tester.pumpWidget(wrap(const GenericFormView(
+      docTypeName: 'Demo Order',
+      documentName: null,
+    )));
+    await _drain(tester);
+    expect(tester.takeException(), isNull, reason: 'layout error at 480');
+    expect(find.text('Choose Customer'), findsOneWidget);
+    expect(find.text('Item Code'), findsNothing);
   });
 }
 

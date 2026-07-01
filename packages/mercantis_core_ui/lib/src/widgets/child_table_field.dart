@@ -67,6 +67,14 @@ const double kChildTableCellHPadding = 8.0;
 const double _kIndexCellWidth = 36;
 const double _kTrailingCellWidth = 44;
 
+/// Below this available (pane) width the horizontal-scroll grid is unusable —
+/// phones and tablet-portrait can't show enough columns without cramping —
+/// so rows collapse to stacked summary cards that open the per-row editor on
+/// tap. At or above it the grid expands to fill the pane (desktop and
+/// tablet-landscape). Measured on the field's own constraints, not the screen,
+/// so it does the right thing inside a narrow split pane too.
+const double _kCardModeMaxWidth = 720;
+
 /// Full-width child-table grid for `FieldType.table` /
 /// `FieldType.tableMultiSelect` fields on [GenericFormView].
 ///
@@ -159,47 +167,30 @@ class _ChildTableFieldState extends State<ChildTableField> {
 
     final fields =
         childType.fields.where((f) => !f.hidden && !_isLayout(f.type)).toList();
-    final gridWidth = _totalMinWidth(fields);
+    final minGridWidth = _totalMinWidth(fields);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Scrollbar(
-          controller: _hScroll,
-          child: SingleChildScrollView(
-            controller: _hScroll,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: gridWidth,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _HeaderRow(fields: fields),
-                  Divider(height: 1, color: theme.dividerColor),
-                  if (widget.rows.isEmpty)
-                    _EmptyRow(width: gridWidth)
-                  else
-                    for (var i = 0; i < widget.rows.length; i++) ...[
-                      _DataRow(
-                        fields: fields,
-                        rowIndex: i,
-                        row: widget.rows[i],
-                        readOnly: widget.readOnly,
-                        onChanged: (updated) => _updateRow(i, updated),
-                        onOpenEditor: () => _openRowEditor(childType, i),
-                      ),
-                      if (i < widget.rows.length - 1)
-                        Divider(
-                          height: 1,
-                          color: theme.dividerColor.withValues(alpha: 0.4),
-                        ),
-                    ],
-                ],
-              ),
-            ),
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final available = constraints.maxWidth;
+            // Narrow panes (phones, tablet-portrait) can't show a usable
+            // horizontal-scroll grid — fall back to stacked summary cards
+            // that open the per-row editor on tap.
+            if (available.isFinite && available < _kCardModeMaxWidth) {
+              return _buildCards(childType, fields);
+            }
+            // Wide panes: the grid fills the available width so columns
+            // breathe and no space is wasted. Only when the columns' own
+            // minimums already overflow the pane do we keep the horizontal
+            // scroll (dense tables on tablet-landscape).
+            final gridWidth = available.isFinite && available > minGridWidth
+                ? available
+                : minGridWidth;
+            return _buildGrid(theme, fields, childType, gridWidth);
+          },
         ),
         Divider(height: 1, color: theme.dividerColor),
         _FooterBar(
@@ -207,6 +198,75 @@ class _ChildTableFieldState extends State<ChildTableField> {
           readOnly: widget.readOnly,
           onAdd: () => _addRow(childType),
         ),
+      ],
+    );
+  }
+
+  Widget _buildGrid(
+    ThemeData theme,
+    List<FieldDefinition> fields,
+    DocType childType,
+    double gridWidth,
+  ) {
+    return Scrollbar(
+      controller: _hScroll,
+      child: SingleChildScrollView(
+        controller: _hScroll,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: gridWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _HeaderRow(fields: fields),
+              Divider(height: 1, color: theme.dividerColor),
+              if (widget.rows.isEmpty)
+                _EmptyRow(width: gridWidth)
+              else
+                for (var i = 0; i < widget.rows.length; i++) ...[
+                  _DataRow(
+                    fields: fields,
+                    rowIndex: i,
+                    row: widget.rows[i],
+                    readOnly: widget.readOnly,
+                    onChanged: (updated) => _updateRow(i, updated),
+                    onOpenEditor: () => _openRowEditor(childType, i),
+                  ),
+                  if (i < widget.rows.length - 1)
+                    Divider(
+                      height: 1,
+                      color: theme.dividerColor.withValues(alpha: 0.4),
+                    ),
+                ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCards(DocType childType, List<FieldDefinition> fields) {
+    if (widget.rows.isEmpty) {
+      return const _EmptyRow(width: double.infinity);
+    }
+    final amount = _amountField(fields);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 4),
+        for (var i = 0; i < widget.rows.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _RowCard(
+              fields: fields,
+              amountField: amount,
+              rowIndex: i,
+              row: widget.rows[i],
+              onTap: () => _openRowEditor(childType, i),
+            ),
+          ),
       ],
     );
   }
@@ -364,6 +424,76 @@ double _totalMinWidth(List<FieldDefinition> fields) {
   }
   return total;
 }
+
+bool _isNumeric(FieldType t) =>
+    t == FieldType.integer ||
+    t == FieldType.float ||
+    t == FieldType.currency ||
+    t == FieldType.percent;
+
+/// The currency column to feature on the right edge of a summary card:
+/// prefer one whose key reads like a line total (`amount`, `total`), else the
+/// last currency column, else null. Kept generic so it works for any child
+/// DocType (quotation items, delivery lines, journal entries, …).
+FieldDefinition? _amountField(List<FieldDefinition> fields) {
+  FieldDefinition? lastCurrency;
+  for (final f in fields) {
+    if (f.type != FieldType.currency) continue;
+    lastCurrency = f;
+    final k = f.key.toLowerCase();
+    if (k.contains('amount') || k.contains('total')) return f;
+  }
+  return lastCurrency;
+}
+
+/// Human title for a summary card — the first non-empty text/link/select
+/// value in the row, falling back to the 1-based row number.
+String _rowTitle(List<FieldDefinition> fields, Map<String, dynamic> row,
+    int index) {
+  for (final f in fields) {
+    switch (f.type) {
+      case FieldType.link:
+      case FieldType.dynamicLink:
+      case FieldType.data:
+      case FieldType.text:
+      case FieldType.select:
+      case FieldType.autocomplete:
+        final v = row[f.key];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      default:
+        break;
+    }
+  }
+  return 'Row ${index + 1}';
+}
+
+/// The compact "Qty 3 · Rate 12.00" driver line under a card title: the row's
+/// numeric fields (excluding the featured amount) shown as `Label value`.
+String _rowDrivers(List<FieldDefinition> fields, Map<String, dynamic> row,
+    FieldDefinition? amount) {
+  final parts = <String>[];
+  for (final f in fields) {
+    if (amount != null && f.key == amount.key) continue;
+    if (!_isNumeric(f.type)) continue;
+    final v = row[f.key];
+    if (v == null) continue;
+    parts.add('${f.label} ${_fmtNum(v)}');
+    if (parts.length == 3) break;
+  }
+  return parts.join('  ·  ');
+}
+
+/// Trim `3.0` → `3` for driver counts; keep other decimals as-is.
+String _fmtNum(dynamic v) {
+  if (v is num) {
+    if (v == v.roundToDouble()) return v.toInt().toString();
+    return v.toString();
+  }
+  return v.toString();
+}
+
+/// Featured currency amount, always two decimals (`36` → `36.00`).
+String _fmtAmount(num v) => v.toStringAsFixed(2);
 
 class _HeaderRow extends StatelessWidget {
   const _HeaderRow({required this.fields});
@@ -682,6 +812,106 @@ class _EmptyRow extends StatelessWidget {
   }
 }
 
+/// Stacked summary of a single child row for narrow panes (phone /
+/// tablet-portrait). Tapping anywhere opens the per-row editor — the same
+/// dialog/sheet the grid's trailing "•••" button uses — so every field stays
+/// reachable without a cramped horizontal grid.
+class _RowCard extends StatelessWidget {
+  const _RowCard({
+    required this.fields,
+    required this.amountField,
+    required this.rowIndex,
+    required this.row,
+    required this.onTap,
+  });
+
+  final List<FieldDefinition> fields;
+  final FieldDefinition? amountField;
+  final int rowIndex;
+  final Map<String, dynamic> row;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = _rowTitle(fields, row, rowIndex);
+    final drivers = _rowDrivers(fields, row, amountField);
+    final amountVal = amountField == null ? null : row[amountField!.key];
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${rowIndex + 1}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (drivers.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          drivers,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (amountVal is num) ...[
+                const SizedBox(width: 8),
+                Text(
+                  _fmtAmount(amountVal),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FooterBar extends StatelessWidget {
   const _FooterBar({
     required this.rowCount,
@@ -787,6 +1017,26 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
     }
   }
 
+  /// Assigns [value] to the draft and re-derives every formula field
+  /// (e.g. `amount = qty * rate`) so the row stays consistent as it's edited —
+  /// mirroring the grid's live recompute (`_DataRow._setCell`) so the
+  /// card-mode editor, now the only edit path on narrow panes, can't save a
+  /// stale computed value.
+  void _setDraft(String key, dynamic value) {
+    setState(() {
+      _draft[key] = value;
+      applyRowFormulas(widget.childDocType.fields, _draft);
+    });
+  }
+
+  /// Formula fields are derived, so they're never hand-editable in the editor
+  /// (they'd be overwritten by the next recompute anyway); a field- or
+  /// form-level read-only flag also locks the control.
+  bool _isReadOnly(FieldDefinition f) =>
+      widget.readOnly ||
+      f.readOnly ||
+      (f.formulaExpression != null && f.formulaExpression!.isNotEmpty);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -856,8 +1106,12 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
               ),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_RowEditorResult.updated(_draft)),
+                onPressed: () {
+                  // Belt-and-suspenders: re-derive once more so the saved row
+                  // is consistent regardless of which control last edited it.
+                  applyRowFormulas(widget.childDocType.fields, _draft);
+                  Navigator.of(context).pop(_RowEditorResult.updated(_draft));
+                },
                 child: const Text('Done'),
               ),
             ],
@@ -870,43 +1124,48 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
   Widget _editorControl(BuildContext context, FieldDefinition f) {
     final value = _draft[f.key];
     final decoration = InputDecoration(labelText: f.label);
+    final ro = _isReadOnly(f);
     switch (f.type) {
       case FieldType.check:
         return SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(f.label),
           value: _coerceBool(value),
-          onChanged:
-              widget.readOnly ? null : (v) => setState(() => _draft[f.key] = v),
+          onChanged: ro ? null : (v) => _setDraft(f.key, v),
         );
       case FieldType.integer:
         return TextFormField(
+          // Read-only (derived) fields re-key on value so a recomputed result
+          // refreshes; editable fields keep a stable key so typing isn't
+          // interrupted when a sibling edit rebuilds the editor.
+          key: ValueKey('int_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration,
           keyboardType: TextInputType.number,
           textAlign: TextAlign.end,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = int.tryParse(s),
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _setDraft(f.key, int.tryParse(s)),
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
         return TextFormField(
+          key: ValueKey('num_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
             suffixText: f.type == FieldType.percent ? '%' : null,
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           textAlign: TextAlign.end,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = double.tryParse(s),
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _setDraft(f.key, double.tryParse(s)),
         );
       case FieldType.date:
         return TextFormField(
           key: ValueKey('date_${f.key}_${value ?? ""}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
-            suffixIcon: widget.readOnly
+            suffixIcon: ro
                 ? null
                 : IconButton(
                     icon: const Icon(Icons.calendar_today),
@@ -919,22 +1178,24 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
                         lastDate: DateTime(2100),
                       );
                       if (picked != null) {
-                        setState(() => _draft[f.key] =
-                            DateFormat('yyyy-MM-dd').format(picked));
+                        _setDraft(
+                            f.key, DateFormat('yyyy-MM-dd').format(picked));
                       }
                     },
                   ),
           ),
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          // Manual typing assigns without a rebuild so the cursor isn't reset
+          // mid-entry; formulas are re-derived on the next edit and at Done.
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
       case FieldType.longText:
         return TextFormField(
           initialValue: value as String? ?? '',
           decoration: decoration,
           maxLines: 5,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
       case FieldType.select:
         final opts =
@@ -945,15 +1206,14 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           items: opts
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),
-          onChanged:
-              widget.readOnly ? null : (v) => setState(() => _draft[f.key] = v),
+          onChanged: ro ? null : (v) => _setDraft(f.key, v),
         );
       default:
         return TextFormField(
           initialValue: value?.toString() ?? '',
           decoration: decoration,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
     }
   }
