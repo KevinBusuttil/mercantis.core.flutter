@@ -141,4 +141,12 @@ void main() {
         .toJson());
     expect(f.fetchFrom, 'item.item_name');
   });
+
+  test('fetchFrom survives resolution into ResolvedFieldDefinition', () {
+    final resolved = ResolvedFieldDefinition.fromFieldDefinition(
+        const FieldDefinition(
+            key: 'item_name', label: 'Name', type: FieldType.data,
+            fetchFrom: 'item.item_name'));
+    expect(resolved.fetchFrom, 'item.item_name');
+  });
 }
