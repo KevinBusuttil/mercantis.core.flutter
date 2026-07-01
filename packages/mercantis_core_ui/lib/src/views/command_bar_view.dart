@@ -70,20 +70,14 @@ class CommandBarView extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Text(
-                documentName ?? 'New $docTypeName',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              // The document title lives in the record's AppBar; repeating it
+              // here was a duplicate. Only the status chip (which the AppBar
+              // doesn't show) stays, so drafts get a clean right-aligned
+              // action row.
               if (_isSubmitted)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Chip(label: Text('Submitted')),
-                ),
+                const Chip(label: Text('Submitted')),
               if (_isCancelled)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Chip(label: Text('Cancelled')),
-                ),
+                const Chip(label: Text('Cancelled')),
               const Spacer(),
               if (isSaving)
                 const SizedBox(
