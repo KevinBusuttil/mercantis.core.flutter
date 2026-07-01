@@ -79,6 +79,14 @@ class FieldDefinition {
   final String? visibilityExpression;
   final String? readOnlyExpression;
   final String? formulaExpression;
+
+  /// Declarative "fetch from linked document" source (C8 / ERPNext `fetch_from`).
+  /// Form: `"<linkFieldKey>.<sourceFieldKey>"` — on save the engine reads the
+  /// document referenced by [linkFieldKey] and copies its `sourceFieldKey` value
+  /// into this field (e.g. a line item's `item_name` from `item.item_name`).
+  /// Null means the field isn't auto-fetched.
+  final String? fetchFrom;
+
   final FieldPermission? permissions;
   final bool allowOnSubmit;
   final String? section;
@@ -111,6 +119,7 @@ class FieldDefinition {
     this.visibilityExpression,
     this.readOnlyExpression,
     this.formulaExpression,
+    this.fetchFrom,
     this.permissions,
     this.allowOnSubmit = false,
     this.section,
@@ -139,6 +148,7 @@ class FieldDefinition {
         visibilityExpression: json['visibilityExpression'] as String?,
         readOnlyExpression: json['readOnlyExpression'] as String?,
         formulaExpression: json['formulaExpression'] as String?,
+        fetchFrom: json['fetchFrom'] as String?,
         permissions: json['permissions'] != null
             ? FieldPermission.fromJson(json['permissions'] as Map<String, dynamic>)
             : null,
@@ -169,6 +179,7 @@ class FieldDefinition {
         if (visibilityExpression != null) 'visibilityExpression': visibilityExpression,
         if (readOnlyExpression != null) 'readOnlyExpression': readOnlyExpression,
         if (formulaExpression != null) 'formulaExpression': formulaExpression,
+        if (fetchFrom != null) 'fetchFrom': fetchFrom,
         if (permissions != null) 'permissions': permissions!.toJson(),
         'allowOnSubmit': allowOnSubmit,
         if (section != null) 'section': section,
@@ -185,6 +196,7 @@ class FieldDefinition {
     String? key, FieldType? type, String? label, bool? required, bool? unique,
     bool? readOnly, bool? hidden, String? options, String? defaultValue,
     String? visibilityExpression, String? readOnlyExpression, String? formulaExpression,
+    String? fetchFrom,
     FieldPermission? permissions, bool? allowOnSubmit, String? section,
     String? description, List<ValidationRule>? validationRules, int? precision,
     String? linkDocType, String? tableDocType, String? helpText, String? placeholder,
@@ -202,6 +214,7 @@ class FieldDefinition {
         visibilityExpression: visibilityExpression ?? this.visibilityExpression,
         readOnlyExpression: readOnlyExpression ?? this.readOnlyExpression,
         formulaExpression: formulaExpression ?? this.formulaExpression,
+        fetchFrom: fetchFrom ?? this.fetchFrom,
         permissions: permissions ?? this.permissions,
         allowOnSubmit: allowOnSubmit ?? this.allowOnSubmit,
         section: section ?? this.section,
