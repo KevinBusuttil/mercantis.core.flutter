@@ -3,7 +3,7 @@ import '../metadata/doc_type.dart';
 import '../metadata/field_definition.dart';
 import 'document.dart';
 
-enum DocumentOperation { read, write, create, delete, submit, amend }
+enum DocumentOperation { read, write, create, delete, submit, cancel, amend }
 
 class ValidationError {
   final String stage;

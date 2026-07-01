@@ -52,6 +52,7 @@ final metadataPermissionContextProvider =
       ('create', DocumentOperation.create),
       ('delete', DocumentOperation.delete),
       ('submit', DocumentOperation.submit),
+      ('cancel', DocumentOperation.cancel),
       ('amend', DocumentOperation.amend),
     ]) {
       if (engine.canPerform(

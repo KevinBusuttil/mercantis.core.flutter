@@ -15,6 +15,11 @@ class PermissionEngine {
     if (userRoles.contains('System Manager') || userRoles.contains('Administrator')) {
       return true;
     }
+    // Cancel is a distinct authority (C5), but for back-compat a `delete` grant
+    // still covers it in the lenient (default) mode. A fail-closed DocType opts
+    // out of that fallback and demands an explicit `cancel` grant.
+    final cancelFallsBackToDelete =
+        operation == DocumentOperation.cancel && !on.failClosed;
     for (final rule in on.permissions) {
       if (!userRoles.contains(rule.role)) continue;
       switch (operation) {
@@ -28,6 +33,9 @@ class PermissionEngine {
           if (rule.delete) return true;
         case DocumentOperation.submit:
           if (rule.submit) return true;
+        case DocumentOperation.cancel:
+          if (rule.cancel) return true;
+          if (cancelFallsBackToDelete && rule.delete) return true;
         case DocumentOperation.amend:
           if (rule.amend) return true;
       }
