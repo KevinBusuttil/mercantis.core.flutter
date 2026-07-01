@@ -61,6 +61,47 @@ void main() {
     expect(find.text('Save the document to see activity'), findsOneWidget);
   });
 
+  testWidgets(
+      'breakpoint follows the record pane width, not the window '
+      '(constrained detail pane)', (tester) async {
+    // Wide WINDOW, but the record is confined to a ~700px detail pane — as in
+    // the /list ResponsiveSplit or the medium rail shell.
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      child: MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              SizedBox(
+                width: 700,
+                child: RecordWorkspaceChrome(
+                  docTypeName: 'Quotation',
+                  documentName: null,
+                  isDirty: false,
+                  isSaving: false,
+                  isSubmittable: false,
+                  docStatus: 0,
+                  onSave: () {},
+                  onSubmit: () {},
+                  child: const Text('FORM_MARKER'),
+                ),
+              ),
+              const Expanded(child: SizedBox.shrink()),
+            ],
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    // Pane is 700px (< 1024) though the window is 1400px, so the tabbed layout
+    // is used — the breakpoint is local, not window-based.
+    expect(find.widgetWithText(Tab, 'Form'), findsOneWidget);
+    expect(find.text('FORM_MARKER'), findsOneWidget);
+  });
+
   testWidgets('layout switches live when the width crosses the breakpoint',
       (tester) async {
     await pump(tester, const Size(1300, 900));
