@@ -128,6 +128,11 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
   /// found, in which case the id is shown as a graceful fallback.
   String? _displayTitle;
   String? _resolvedFor;
+  // Whether the resolution behind [_displayTitle] had the target DocType's meta
+  // available. A resolver (e.g. GenericFormView's) can populate its meta
+  // asynchronously, so a title first resolved without meta is retried once meta
+  // arrives — otherwise a non-standard title field would stay stuck as the id.
+  bool _resolvedWithMeta = false;
 
   @override
   void initState() {
@@ -138,10 +143,10 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
   @override
   void didUpdateWidget(LinkPickerField old) {
     super.didUpdateWidget(old);
-    if (old.value != widget.value ||
-        old.targetDocType != widget.targetDocType) {
-      _resolveTitle();
-    }
+    // Re-run on every update: _resolveTitle cheaply no-ops when the value is
+    // already resolved with meta, but retries when a resolver has since become
+    // able to name the target (or when value/targetDocType changed).
+    _resolveTitle();
   }
 
   String? _displayTitleFor(String value) =>
@@ -156,27 +161,28 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
         setState(() {
           _displayTitle = null;
           _resolvedFor = null;
+          _resolvedWithMeta = false;
         });
       }
       return;
     }
-    if (_resolvedFor == value) return; // already resolved this value
+    final meta = widget.targetDocTypeResolver?.call(widget.targetDocType);
+    final hasMeta = meta != null;
+    // Already resolved this value — skip, unless the last resolution lacked the
+    // target meta and it's now available (which may surface a better title).
+    if (_resolvedFor == value && (_resolvedWithMeta || !hasMeta)) return;
     try {
       final engine = await ref.read(documentEngineProvider.future);
       final doc = await engine.fetch(widget.targetDocType, value);
       if (!mounted) return;
       setState(() {
         _resolvedFor = value;
+        _resolvedWithMeta = hasMeta;
         // Skip the fuzzy "any string field" fallback: for a document link
         // (e.g. a Sales Invoice) the id itself is the meaningful label, so we
         // only substitute a title when the target has a real name field.
-        _displayTitle = doc == null
-            ? null
-            : deriveLinkLabel(
-                doc,
-                widget.targetDocTypeResolver?.call(widget.targetDocType),
-                allowAnyString: false,
-              );
+        _displayTitle =
+            doc == null ? null : deriveLinkLabel(doc, meta, allowAnyString: false);
       });
     } catch (_) {
       // Leave unresolved → the raw id shows as a fallback.
