@@ -435,10 +435,17 @@ class _SectionGroup {
   _SectionGroup({
     required this.name,
     required this.columns,
+    required this.explicit,
     required this.fields,
   });
   final String name;
   final int columns;
+
+  /// Whether [columns] was set explicitly by the caller's `sectionColumns`
+  /// (as opposed to the default). An explicit value — including an explicit
+  /// `1` that pins the group full-width — is honoured over the responsive
+  /// two-column default.
+  final bool explicit;
   final List<ResolvedFieldDefinition> fields;
 }
 
@@ -495,10 +502,12 @@ class _MetaForm extends StatelessWidget {
     final order = <String>[];
     for (final f in meta.visibleFields) {
       final key = f.section ?? '';
+      final explicit = sectionColumns?.containsKey(key) ?? false;
       final cols = sectionColumns?[key] ?? 1;
       final g = groups.putIfAbsent(key, () {
         order.add(key);
-        return _SectionGroup(name: key, columns: cols, fields: []);
+        return _SectionGroup(
+            name: key, columns: cols, explicit: explicit, fields: []);
       });
       g.fields.add(f);
     }
@@ -565,8 +574,11 @@ class _MetaForm extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 840;
+        // Honour an explicit per-section override (including an explicit `1`
+        // that pins a group full-width); apply the responsive two-column
+        // default only where the caller didn't specify a count.
         int columnsFor(_SectionGroup g) =>
-            g.columns >= 2 ? g.columns : (wide ? 2 : 1);
+            g.explicit ? g.columns : (wide ? 2 : 1);
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Column(
