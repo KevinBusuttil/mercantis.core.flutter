@@ -1017,6 +1017,26 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
     }
   }
 
+  /// Assigns [value] to the draft and re-derives every formula field
+  /// (e.g. `amount = qty * rate`) so the row stays consistent as it's edited —
+  /// mirroring the grid's live recompute (`_DataRow._setCell`) so the
+  /// card-mode editor, now the only edit path on narrow panes, can't save a
+  /// stale computed value.
+  void _setDraft(String key, dynamic value) {
+    setState(() {
+      _draft[key] = value;
+      applyRowFormulas(widget.childDocType.fields, _draft);
+    });
+  }
+
+  /// Formula fields are derived, so they're never hand-editable in the editor
+  /// (they'd be overwritten by the next recompute anyway); a field- or
+  /// form-level read-only flag also locks the control.
+  bool _isReadOnly(FieldDefinition f) =>
+      widget.readOnly ||
+      f.readOnly ||
+      (f.formulaExpression != null && f.formulaExpression!.isNotEmpty);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1086,8 +1106,12 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
               ),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_RowEditorResult.updated(_draft)),
+                onPressed: () {
+                  // Belt-and-suspenders: re-derive once more so the saved row
+                  // is consistent regardless of which control last edited it.
+                  applyRowFormulas(widget.childDocType.fields, _draft);
+                  Navigator.of(context).pop(_RowEditorResult.updated(_draft));
+                },
                 child: const Text('Done'),
               ),
             ],
@@ -1100,43 +1124,48 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
   Widget _editorControl(BuildContext context, FieldDefinition f) {
     final value = _draft[f.key];
     final decoration = InputDecoration(labelText: f.label);
+    final ro = _isReadOnly(f);
     switch (f.type) {
       case FieldType.check:
         return SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(f.label),
           value: _coerceBool(value),
-          onChanged:
-              widget.readOnly ? null : (v) => setState(() => _draft[f.key] = v),
+          onChanged: ro ? null : (v) => _setDraft(f.key, v),
         );
       case FieldType.integer:
         return TextFormField(
+          // Read-only (derived) fields re-key on value so a recomputed result
+          // refreshes; editable fields keep a stable key so typing isn't
+          // interrupted when a sibling edit rebuilds the editor.
+          key: ValueKey('int_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration,
           keyboardType: TextInputType.number,
           textAlign: TextAlign.end,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = int.tryParse(s),
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _setDraft(f.key, int.tryParse(s)),
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
         return TextFormField(
+          key: ValueKey('num_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
             suffixText: f.type == FieldType.percent ? '%' : null,
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           textAlign: TextAlign.end,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = double.tryParse(s),
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _setDraft(f.key, double.tryParse(s)),
         );
       case FieldType.date:
         return TextFormField(
           key: ValueKey('date_${f.key}_${value ?? ""}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration.copyWith(
-            suffixIcon: widget.readOnly
+            suffixIcon: ro
                 ? null
                 : IconButton(
                     icon: const Icon(Icons.calendar_today),
@@ -1149,22 +1178,24 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
                         lastDate: DateTime(2100),
                       );
                       if (picked != null) {
-                        setState(() => _draft[f.key] =
-                            DateFormat('yyyy-MM-dd').format(picked));
+                        _setDraft(
+                            f.key, DateFormat('yyyy-MM-dd').format(picked));
                       }
                     },
                   ),
           ),
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          // Manual typing assigns without a rebuild so the cursor isn't reset
+          // mid-entry; formulas are re-derived on the next edit and at Done.
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
       case FieldType.longText:
         return TextFormField(
           initialValue: value as String? ?? '',
           decoration: decoration,
           maxLines: 5,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
       case FieldType.select:
         final opts =
@@ -1175,15 +1206,14 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           items: opts
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),
-          onChanged:
-              widget.readOnly ? null : (v) => setState(() => _draft[f.key] = v),
+          onChanged: ro ? null : (v) => _setDraft(f.key, v),
         );
       default:
         return TextFormField(
           initialValue: value?.toString() ?? '',
           decoration: decoration,
-          readOnly: widget.readOnly,
-          onChanged: (s) => _draft[f.key] = s,
+          readOnly: ro,
+          onChanged: ro ? null : (s) => _draft[f.key] = s,
         );
     }
   }

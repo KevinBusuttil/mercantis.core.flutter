@@ -95,6 +95,54 @@ void main() {
     expect(find.text('50.00'), findsOneWidget);
   });
 
+  testWidgets(
+      'card-mode editor recomputes the row formula (amount = qty * rate) '
+      'and saves the derived value', (tester) async {
+    // 700px: the field pane is still < 720 (card mode), but the screen is
+    // wide enough that the per-row editor opens as a dialog rather than a
+    // draggable sheet — keeping the "Done" action reliably on-screen.
+    tester.view.physicalSize = const Size(700, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    List<Map<String, dynamic>>? captured;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ChildTableField(
+            field: tableField,
+            childDocType: childType,
+            rows: [
+              {'item_code': 'WIDGET', 'qty': 3, 'rate': 12.0, 'amount': 36.0},
+            ],
+            readOnly: false,
+            onChanged: (next) => captured = next,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    // Open the per-row editor by tapping the summary card.
+    await tester.tap(find.text('WIDGET'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // Change qty 3 -> 5; amount must re-derive to 5 * 12 = 60 and be saved.
+    final qtyField = find.byKey(const ValueKey('int_qty_edit'));
+    expect(qtyField, findsOneWidget);
+    await tester.enterText(qtyField, '5');
+    await tester.pump();
+
+    await tester.tap(find.text('Done'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(captured, isNotNull);
+    expect(captured!.single['qty'], 5);
+    expect(captured!.single['amount'], 60.0);
+  });
+
   testWidgets('empty child table shows the empty-state at both widths',
       (tester) async {
     for (final size in const [Size(1100, 900), Size(380, 900)]) {
