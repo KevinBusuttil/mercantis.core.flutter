@@ -50,6 +50,16 @@ class SavedReportException implements Exception {
       SavedReportException(
           'User "$userId" isn\'t allowed to open this private saved report.');
 
+  factory SavedReportException.chartCategoryNotGrouped(String fieldKey) =>
+      SavedReportException(
+          'The chart category "$fieldKey" must be one of the report\'s grouped '
+          'fields.');
+
+  factory SavedReportException.chartAggregateOutOfRange(int index) =>
+      SavedReportException(
+          'The chart references aggregate #$index, which this report doesn\'t '
+          'define.');
+
   @override
   String toString() => 'SavedReportException: $message';
 }
@@ -156,6 +166,16 @@ class SavedReportEngine {
     }
     final allowedFields = allowedFieldKeys(docType);
 
+    // Typed predicates from the stored filters (shared by both paths).
+    final predicates = _buildPredicates(savedReport, runtimeFilterValues);
+
+    // Grouped/aggregated execution (C7) takes a separate path — its columns
+    // come from the group keys + aggregates, not the raw visible columns.
+    if (savedReport.isGrouped) {
+      return _executeGrouped(
+          savedReport, docType, allowedFields, predicates, userRoles);
+    }
+
     final visibleColumns = savedReport.visibleColumnsInOrder;
     if (visibleColumns.isEmpty) {
       throw SavedReportException.noVisibleColumns(savedReport.id);
@@ -165,16 +185,6 @@ class SavedReportEngine {
     // (or a known system column) — the guard that keeps a saved report from
     // reaching beyond its declared surface.
     _validateFields(savedReport, visibleColumns, allowedFields);
-
-    // Typed predicates from the stored filters.
-    final predicates = <ListFilter>[];
-    for (final filter in savedReport.filters) {
-      final effective = runtimeFilterValues.containsKey(filter.fieldKey)
-          ? runtimeFilterValues[filter.fieldKey]
-          : (filter.value ?? filter.defaultValue);
-      final predicate = _makePredicate(filter, effective);
-      if (predicate != null) predicates.add(predicate);
-    }
 
     final sortBy = savedReport.sorts
         .map((s) => (
@@ -213,6 +223,193 @@ class SavedReportEngine {
       columns: columns,
       rows: rows,
     );
+  }
+
+  // MARK: grouped execution (C7)
+
+  /// Executes a grouped/aggregated saved report: documents are bucketed by the
+  /// `groupBy` field values, each `aggregates` entry is folded per bucket, and
+  /// the result has one row per group (group columns + aggregate columns), plus
+  /// an optional [ReportChart].
+  Future<ReportResult> _executeGrouped(
+    SavedReportDefinition savedReport,
+    DocType docType,
+    Set<String> allowedFields,
+    List<ListFilter> predicates,
+    Set<String> userRoles,
+  ) async {
+    // Guard every referenced field, plus the chart's category/aggregate refs.
+    void check(String key) {
+      if (!allowedFields.contains(key)) {
+        throw SavedReportException.unknownField(key, savedReport.sourceDocType);
+      }
+    }
+
+    for (final g in savedReport.groupBy) {
+      check(g);
+    }
+    for (final a in savedReport.aggregates) {
+      if (a.fn != SavedReportAggregateFunction.count) check(a.fieldKey);
+    }
+    for (final f in savedReport.filters) {
+      check(f.fieldKey);
+    }
+    final chart = savedReport.chart;
+    if (chart != null) {
+      if (!savedReport.groupBy.contains(chart.categoryFieldKey)) {
+        throw SavedReportException.chartCategoryNotGrouped(
+            chart.categoryFieldKey);
+      }
+      if (chart.aggregateIndex < 0 ||
+          chart.aggregateIndex >= savedReport.aggregates.length) {
+        throw SavedReportException.chartAggregateOutOfRange(
+            chart.aggregateIndex);
+      }
+    }
+
+    final documents = await _list(
+      savedReport.sourceDocType,
+      predicates: predicates.isEmpty ? null : predicates,
+      userRoles: userRoles,
+    );
+
+    // Bucket documents by their group-key tuple, preserving one representative
+    // per group for the (formatted) group cell values.
+    final groups = <String, List<Document>>{};
+    final groupKeyValues = <String, List<dynamic>>{};
+    for (final doc in documents) {
+      final values = [for (final g in savedReport.groupBy) _valueFor(doc, g)];
+      // Composite key from formatted values so distinct display labels bucket
+      // apart deterministically; the raw values drive the group cells.
+      final key = values
+          .map((v) => _formatter.format(v, type: null) ?? ' ')
+          .join('');
+      groups.putIfAbsent(key, () => []).add(doc);
+      groupKeyValues.putIfAbsent(key, () => values);
+    }
+
+    // Columns: one per group field, then one per aggregate.
+    final columns = <ReportColumn>[
+      for (final g in savedReport.groupBy)
+        ReportColumn(
+            fieldKey: g, label: _labelForField(docType, g),
+            type: _typeFor(docType, g)),
+      for (final a in savedReport.aggregates)
+        ReportColumn(
+            fieldKey: a.fieldKey,
+            label: a.resolvedLabel,
+            type: a.fn == SavedReportAggregateFunction.count ? 'int' : 'float'),
+    ];
+
+    // Deterministic order: sort group keys ascending.
+    final orderedKeys = groups.keys.toList()..sort();
+
+    // Aggregate value per group per aggregate (kept numeric for the chart).
+    final aggregateValues = <String, List<num?>>{};
+    for (final key in orderedKeys) {
+      aggregateValues[key] = [
+        for (final a in savedReport.aggregates) _fold(a, groups[key]!),
+      ];
+    }
+
+    final rows = <List<String?>>[];
+    for (final key in orderedKeys) {
+      final groupCells = [
+        for (var i = 0; i < savedReport.groupBy.length; i++)
+          _formatter.format(groupKeyValues[key]![i],
+              type: _typeFor(docType, savedReport.groupBy[i])),
+      ];
+      final aggCells = [
+        for (var i = 0; i < savedReport.aggregates.length; i++)
+          _formatter.format(aggregateValues[key]![i],
+              type: savedReport.aggregates[i].fn ==
+                      SavedReportAggregateFunction.count
+                  ? 'int'
+                  : 'float'),
+      ];
+      rows.add([...groupCells, ...aggCells]);
+    }
+
+    ReportChart? reportChart;
+    if (chart != null) {
+      final catIndex = savedReport.groupBy.indexOf(chart.categoryFieldKey);
+      reportChart = ReportChart(
+        type: chart.type.name,
+        categoryLabel: _labelForField(docType, chart.categoryFieldKey),
+        valueLabel: savedReport.aggregates[chart.aggregateIndex].resolvedLabel,
+        categories: [
+          for (final key in orderedKeys)
+            _formatter.format(groupKeyValues[key]![catIndex],
+                    type: _typeFor(docType, chart.categoryFieldKey)) ??
+                '',
+        ],
+        values: [
+          for (final key in orderedKeys)
+            aggregateValues[key]![chart.aggregateIndex],
+        ],
+      );
+    }
+
+    return ReportResult(
+      reportId: savedReport.id,
+      name: savedReport.name,
+      columns: columns,
+      rows: rows,
+      chart: reportChart,
+    );
+  }
+
+  /// Folds one aggregate over a group's documents. `count` returns the row
+  /// count; the numeric functions ignore non-numeric/null cells and return
+  /// `null` when a group has no numeric value (except `sum`, which is 0).
+  num? _fold(SavedReportAggregate a, List<Document> docs) {
+    if (a.fn == SavedReportAggregateFunction.count) return docs.length;
+    final nums = <num>[];
+    for (final doc in docs) {
+      final n = _asNum(_valueFor(doc, a.fieldKey));
+      if (n != null) nums.add(n);
+    }
+    switch (a.fn) {
+      case SavedReportAggregateFunction.sum:
+        return nums.fold<num>(0, (s, n) => s + n);
+      case SavedReportAggregateFunction.avg:
+        if (nums.isEmpty) return null;
+        return nums.fold<num>(0, (s, n) => s + n) / nums.length;
+      case SavedReportAggregateFunction.min:
+        if (nums.isEmpty) return null;
+        return nums.reduce((x, y) => x < y ? x : y);
+      case SavedReportAggregateFunction.max:
+        if (nums.isEmpty) return null;
+        return nums.reduce((x, y) => x > y ? x : y);
+      case SavedReportAggregateFunction.count:
+        return docs.length; // handled above
+    }
+  }
+
+  static num? _asNum(dynamic v) {
+    if (v is num) return v;
+    if (v is String) return num.tryParse(v.trim());
+    return null;
+  }
+
+  String _labelForField(DocType docType, String fieldKey) {
+    for (final f in docType.fields) {
+      if (f.key == fieldKey) return f.label;
+    }
+    return fieldKey;
+  }
+
+  List<ListFilter> _buildPredicates(
+      SavedReportDefinition savedReport, Map<String, Object?> runtime) {
+    final predicates = <ListFilter>[];
+    for (final filter in savedReport.filters) {
+      final effective = runtime.containsKey(filter.fieldKey)
+          ? runtime[filter.fieldKey]
+          : (filter.value ?? filter.defaultValue);
+      final predicate = _makePredicate(filter, effective);
+      if (predicate != null) predicates.add(predicate);
+    }
+    return predicates;
   }
 
   // MARK: validation
