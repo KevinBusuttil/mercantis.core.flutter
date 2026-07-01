@@ -34,6 +34,12 @@ class DocType {
   /// is false are dropped. Null means no row-level restriction.
   final String? rowAccessExpression;
 
+  /// Opt-in strict permission mode for submittable DocTypes (C5). When true, the
+  /// lifecycle operations submit/cancel/amend must each be granted by an
+  /// explicit [PermissionRule] flag — a `delete` grant no longer implicitly
+  /// covers cancel. Default false preserves the lenient back-compat behaviour.
+  final bool failClosed;
+
   const DocType({
     required this.id,
     required this.name,
@@ -55,6 +61,7 @@ class DocType {
     this.maxAttachments,
     this.makeAttachmentsPublic = false,
     this.rowAccessExpression,
+    this.failClosed = false,
   });
 
   factory DocType.fromJson(Map<String, dynamic> json) => DocType(
@@ -93,6 +100,7 @@ class DocType {
         maxAttachments: json['maxAttachments'] as int?,
         makeAttachmentsPublic: (json['makeAttachmentsPublic'] as bool?) ?? false,
         rowAccessExpression: json['rowAccessExpression'] as String?,
+        failClosed: (json['failClosed'] as bool?) ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -117,6 +125,7 @@ class DocType {
         if (maxAttachments != null) 'maxAttachments': maxAttachments,
         'makeAttachmentsPublic': makeAttachmentsPublic,
         if (rowAccessExpression != null) 'rowAccessExpression': rowAccessExpression,
+        'failClosed': failClosed,
       };
 
   DocType copyWith({
@@ -126,6 +135,7 @@ class DocType {
     String? workflowId, bool? isCustom, String? namingRule,
     List<DocumentNamingRule>? namingRules, bool? trackChanges,
     int? maxAttachments, bool? makeAttachmentsPublic, String? rowAccessExpression,
+    bool? failClosed,
   }) =>
       DocType(
         id: id ?? this.id,
@@ -148,5 +158,6 @@ class DocType {
         maxAttachments: maxAttachments ?? this.maxAttachments,
         makeAttachmentsPublic: makeAttachmentsPublic ?? this.makeAttachmentsPublic,
         rowAccessExpression: rowAccessExpression ?? this.rowAccessExpression,
+        failClosed: failClosed ?? this.failClosed,
       );
 }

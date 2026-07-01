@@ -573,7 +573,7 @@ class DocumentEngine {
         id: doc.id,
       );
     }
-    if (!_authorized(DocumentOperation.delete, docType, ctx)) {
+    if (!_authorized(DocumentOperation.cancel, docType, ctx)) {
       throw DocumentEngineError.permissionDenied(
         operation: 'cancel',
         docType: doc.docType,
