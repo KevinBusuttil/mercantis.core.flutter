@@ -128,9 +128,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    // Change qty 3 -> 5; amount must re-derive to 5 * 12 = 60 and be saved.
-    final qtyField = find.byKey(const ValueKey('int_qty_edit'));
-    expect(qtyField, findsOneWidget);
+    // Change qty 3 -> 5 via the Atlas quantity stepper; amount must re-derive
+    // to 5 * 12 = 60 and be saved.
+    final stepper = find.byType(AtlasQuantityStepper);
+    expect(stepper, findsOneWidget);
+    final qtyField =
+        find.descendant(of: stepper, matching: find.byType(TextField));
     await tester.enterText(qtyField, '5');
     await tester.pump();
 
@@ -141,6 +144,60 @@ void main() {
     expect(captured, isNotNull);
     expect(captured!.single['qty'], 5);
     expect(captured!.single['amount'], 60.0);
+  });
+
+  testWidgets('a float `discount` column is not treated as a quantity stepper',
+      (tester) async {
+    const withDiscount = DocType(
+      id: 'Disc Item',
+      name: 'Disc Item',
+      module: 'Sales',
+      permissions: [
+        PermissionRule(
+            role: 'System Manager', read: true, write: true, create: true),
+      ],
+      fields: [
+        FieldDefinition(key: 'item_code', label: 'Item Code', type: FieldType.data),
+        FieldDefinition(
+            key: 'qty', label: 'Qty', type: FieldType.integer, defaultValue: '1'),
+        FieldDefinition(key: 'discount', label: 'Discount', type: FieldType.float),
+      ],
+    );
+    final discField = ResolvedFieldDefinition.fromFieldDefinition(
+      const FieldDefinition(
+        key: 'items',
+        label: 'Items',
+        type: FieldType.table,
+        tableDocType: 'Disc Item',
+      ),
+    );
+    tester.view.physicalSize = const Size(700, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ChildTableField(
+            field: discField,
+            childDocType: withDiscount,
+            rows: [
+              {'item_code': 'WIDGET', 'qty': 3, 'discount': 1.5},
+            ],
+            readOnly: false,
+            onChanged: (_) {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('WIDGET'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // Only qty (integer) becomes a stepper; the float `discount` (which merely
+    // *contains* "count") stays a plain numeric field.
+    expect(find.byType(AtlasQuantityStepper), findsOneWidget);
   });
 
   testWidgets('empty child table shows the empty-state at both widths',

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../shell/breakpoints.dart';
+import '../theme/atlas/atlas_field_row.dart';
 import 'link_picker_field.dart';
 
 /// Shared across rows so the expression parse-cache is reused. Evaluates
@@ -438,6 +439,20 @@ double _totalMinWidth(List<FieldDefinition> fields) {
     total += _minWidth(f) + kChildTableCellHPadding * 2;
   }
   return total;
+}
+
+/// A key that reads like a line quantity — used to give float qty fields the
+/// same − / + stepper the integer counts get in the line-item editor. Matches
+/// `count` / `units` / `quantity` as whole key *tokens* (not raw substrings) so
+/// unrelated fields like `discount` or `account_balance` aren't mis-classified;
+/// `qty` is distinctive enough to match anywhere.
+bool _looksLikeQuantity(String key) {
+  final k = key.toLowerCase();
+  if (k.contains('qty')) return true;
+  const qtyTokens = {'quantity', 'count', 'units', 'nos'};
+  return k
+      .split(RegExp(r'[^a-z0-9]+'))
+      .any(qtyTokens.contains);
 }
 
 bool _isNumeric(FieldType t) =>
@@ -1075,6 +1090,20 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Grab handle — only in the draggable bottom-sheet variant (phone),
+        // where scrollController is supplied; the dialog variant omits it.
+        if (widget.scrollController != null)
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 8, bottom: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Column(
@@ -1162,10 +1191,19 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           onChanged: ro ? null : (v) => _setDraft(f.key, v),
         );
       case FieldType.integer:
+        // Editable integer counts get the Atlas − / + stepper; derived /
+        // read-only integers keep the plain (re-keying) read-only field so a
+        // recomputed value still refreshes.
+        if (!ro) {
+          return AtlasQuantityStepper(
+            label: f.label,
+            required: f.required,
+            value: value is num ? value : num.tryParse(value?.toString() ?? ''),
+            min: 0,
+            onChanged: (v) => _setDraft(f.key, v?.toInt()),
+          );
+        }
         return TextFormField(
-          // Read-only (derived) fields re-key on value so a recomputed result
-          // refreshes; editable fields keep a stable key so typing isn't
-          // interrupted when a sibling edit rebuilds the editor.
           key: ValueKey('int_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
           decoration: decoration,
@@ -1177,6 +1215,20 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
+        // A float that reads like a quantity (e.g. a fractional qty) also gets
+        // the stepper; money (currency) and percent stay plain numeric fields.
+        if (!ro && f.type == FieldType.float && _looksLikeQuantity(f.key)) {
+          return AtlasQuantityStepper(
+            label: f.label,
+            required: f.required,
+            value: value is num ? value : num.tryParse(value?.toString() ?? ''),
+            min: 0,
+            // Honour the field's declared precision so a fractional qty isn't
+            // rounded to 2dp (e.g. 0.125 at precision 3 stays 0.125).
+            decimals: f.precision ?? 2,
+            onChanged: (v) => _setDraft(f.key, v?.toDouble()),
+          );
+        }
         return TextFormField(
           key: ValueKey('num_${f.key}_${ro ? value ?? "" : "edit"}'),
           initialValue: value?.toString() ?? '',
