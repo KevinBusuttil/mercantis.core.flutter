@@ -42,6 +42,11 @@ void main() {
         FieldDefinition(key: 'customer', label: 'Customer', type: FieldType.link, linkDocType: 'Customer', required: true),
         FieldDefinition(key: 'order_date', label: 'Order Date', type: FieldType.date),
         FieldDefinition(key: 'priority', label: 'Priority', type: FieldType.select, options: 'Low\nHigh'),
+        FieldDefinition(key: 'notes', label: 'Notes', type: FieldType.text),
+        FieldDefinition(key: 'rate', label: 'Rate', type: FieldType.currency),
+        FieldDefinition(key: 'urgent', label: 'Urgent', type: FieldType.check),
+        FieldDefinition(key: 'total', label: 'Total', type: FieldType.currency, readOnly: true),
+        FieldDefinition(key: 'grand_total', label: 'Grand Total', type: FieldType.currency, readOnly: true),
       ],
     ));
     await database.db.insert('documents', {
@@ -113,5 +118,28 @@ void main() {
     // The chosen value replaces the placeholder on the row.
     expect(find.text('Select Priority'), findsNothing);
     expect(find.text('High'), findsOneWidget);
+  });
+
+  testWidgets('inline value types + read-only totals render as Atlas rows',
+      (tester) async {
+    tester.view.physicalSize = const Size(900, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(wrap());
+    await drain(tester);
+    expect(tester.takeException(), isNull);
+
+    // Read-only currency fields become totals rows (Total + Grand Total).
+    expect(find.byType(AtlasTotalRow), findsNWidgets(2));
+    expect(find.text('Total'), findsOneWidget);
+    expect(find.text('Grand Total'), findsOneWidget);
+
+    // The boolean field is a toggle row.
+    expect(find.byType(Switch), findsOneWidget);
+
+    // Editable text / number fields are Atlas rows with an inline editor.
+    expect(find.byType(AtlasFieldRow), findsWidgets);
+    expect(find.byType(TextField), findsWidgets);
   });
 }

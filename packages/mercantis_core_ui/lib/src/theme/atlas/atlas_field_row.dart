@@ -54,6 +54,9 @@ class AtlasFieldRow extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final hasValue = (value ?? '').trim().isNotEmpty;
+    // Toggle rows (a trailing switch, no editor/value) render label-only.
+    final showValue =
+        child != null || hasValue || (placeholder ?? '').isNotEmpty;
 
     final valueWidget = child ??
         Text(
@@ -84,8 +87,8 @@ class AtlasFieldRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               _AtlasLabel(label: label, required: required),
-              const SizedBox(height: 2),
-              valueWidget,
+              if (showValue) const SizedBox(height: 2),
+              if (showValue) valueWidget,
             ],
           ),
         ),
@@ -112,6 +115,64 @@ class AtlasFieldRow extends StatelessWidget {
           ),
           child: row,
         ),
+      ),
+    );
+  }
+}
+
+/// A read-only "money" row for a form summary — label on the left, value on the
+/// right in tabular figures. The [emphasize] variant (a document's grand total)
+/// uses a tinted block in the accent colour so the bottom line reads at a
+/// glance, per the Atlas "strong totals" rule.
+class AtlasTotalRow extends StatelessWidget {
+  const AtlasTotalRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final valueStyle =
+        (emphasize ? theme.textTheme.titleMedium : theme.textTheme.titleSmall)
+            ?.copyWith(
+      color: emphasize ? cs.primary : cs.onSurface,
+      fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final labelStyle =
+        (emphasize ? theme.textTheme.titleSmall : theme.textTheme.bodyMedium)
+            ?.copyWith(
+      color: emphasize ? cs.primary : cs.onSurfaceVariant,
+      fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: emphasize
+            ? cs.primary.withValues(alpha: 0.10)
+            : cs.surfaceContainerLowest,
+        borderRadius: MercantisRadius.rMd,
+        border: Border.all(
+          color: emphasize
+              ? cs.primary.withValues(alpha: 0.28)
+              : cs.outlineVariant.withValues(alpha: 0.7),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(
+          horizontal: MercantisSpacing.md, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: labelStyle)),
+          const SizedBox(width: MercantisSpacing.sm),
+          Text(value, style: valueStyle),
+        ],
       ),
     );
   }

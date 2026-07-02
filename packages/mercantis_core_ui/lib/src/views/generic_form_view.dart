@@ -919,37 +919,175 @@ class FieldWidget extends StatelessWidget {
     );
   }
 
+  /// Borderless decoration so an inline editor reads as the row's *value*
+  /// rather than an outlined box — the Atlas row already supplies the card,
+  /// label and padding.
+  InputDecoration _atlasInline(
+    BuildContext context, {
+    String? hintText,
+    String? prefixText,
+    String? suffixText,
+  }) {
+    return InputDecoration(
+      isCollapsed: true,
+      border: InputBorder.none,
+      contentPadding: EdgeInsets.zero,
+      hintText: hintText,
+      hintStyle: TextStyle(
+        color:
+            Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+        fontWeight: FontWeight.w500,
+      ),
+      prefixText: prefixText,
+      suffixText: suffixText,
+    );
+  }
+
+  TextStyle? _atlasValueStyle(BuildContext context) => Theme.of(context)
+      .textTheme
+      .titleMedium
+      ?.copyWith(fontWeight: FontWeight.w600);
+
+  String _atlasMoney(num? v) {
+    final s = (v ?? 0).toDouble().toStringAsFixed(2);
+    return (currencySymbol != null && currencySymbol!.isNotEmpty)
+        ? '$currencySymbol$s'
+        : s;
+  }
+
+  /// An inline single-line text row (used for text / smallText / data and the
+  /// default fallback). Keeps the outlined editor inside a dense child-table
+  /// cell.
+  Widget _atlasTextRow(BuildContext context) {
+    if (ChildTableContext.isInline(context)) {
+      return _TextFieldEditor(
+        value: value?.toString() ?? '',
+        decoration: _decoration(context),
+        readOnly: readOnly,
+        onChanged: onChanged,
+      );
+    }
+    return AtlasFieldRow(
+      icon: atlasFieldIcon(field),
+      label: _label,
+      required: field.required,
+      readOnly: readOnly,
+      value: readOnly ? value?.toString() : null,
+      child: readOnly
+          ? null
+          : _TextFieldEditor(
+              value: value?.toString() ?? '',
+              decoration: _atlasInline(context,
+                  hintText: field.placeholder ?? 'Enter ${_label.toLowerCase()}'),
+              style: _atlasValueStyle(context),
+              readOnly: readOnly,
+              onChanged: onChanged,
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (field.type) {
       case FieldType.check:
-        return CheckboxListTile(
-          title: _inlineLabel(context),
-          value: (value as int? ?? 0) == 1,
-          onChanged: readOnly ? null : (v) => onChanged(v == true ? 1 : 0),
-          contentPadding: EdgeInsets.zero,
+        if (ChildTableContext.isInline(context)) {
+          return CheckboxListTile(
+            title: _inlineLabel(context),
+            value: (value as int? ?? 0) == 1,
+            onChanged: readOnly ? null : (v) => onChanged(v == true ? 1 : 0),
+            contentPadding: EdgeInsets.zero,
+          );
+        }
+        final on = (value as int? ?? 0) == 1;
+        return AtlasFieldRow(
+          icon: atlasFieldIcon(field),
+          label: _label,
+          required: field.required,
+          readOnly: readOnly,
+          onTap: readOnly ? null : () => onChanged(on ? 0 : 1),
+          trailing: Switch(
+            value: on,
+            onChanged: readOnly ? null : (v) => onChanged(v ? 1 : 0),
+          ),
         );
       case FieldType.integer:
-        return _TextFieldEditor(
-          value: (value as int?)?.toString() ?? '',
-          decoration: _decoration(context),
-          keyboardType: TextInputType.number,
+        if (ChildTableContext.isInline(context)) {
+          return _TextFieldEditor(
+            value: (value as int?)?.toString() ?? '',
+            decoration: _decoration(context),
+            keyboardType: TextInputType.number,
+            readOnly: readOnly,
+            onChanged: (v) => onChanged(int.tryParse(v)),
+          );
+        }
+        return AtlasFieldRow(
+          icon: atlasFieldIcon(field),
+          label: _label,
+          required: field.required,
           readOnly: readOnly,
-          onChanged: (v) => onChanged(int.tryParse(v)),
+          value: readOnly ? (value as int?)?.toString() : null,
+          child: readOnly
+              ? null
+              : _TextFieldEditor(
+                  value: (value as int?)?.toString() ?? '',
+                  decoration: _atlasInline(context),
+                  keyboardType: TextInputType.number,
+                  style: _atlasValueStyle(context),
+                  readOnly: readOnly,
+                  onChanged: (v) => onChanged(int.tryParse(v)),
+                ),
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
-        return _TextFieldEditor(
-          value: (value as num?)?.toString() ?? '',
-          decoration: _decoration(
-            context,
-            suffixText: field.type == FieldType.percent ? '%' : null,
-            prefixText: field.type == FieldType.currency ? currencySymbol : null,
-          ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        if (ChildTableContext.isInline(context)) {
+          return _TextFieldEditor(
+            value: (value as num?)?.toString() ?? '',
+            decoration: _decoration(
+              context,
+              suffixText: field.type == FieldType.percent ? '%' : null,
+              prefixText:
+                  field.type == FieldType.currency ? currencySymbol : null,
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            readOnly: readOnly,
+            onChanged: (v) => onChanged(double.tryParse(v)),
+          );
+        }
+        final numVal = value as num?;
+        // A read-only currency / float is a computed money value → totals row;
+        // the grand total gets the tinted emphasis.
+        if (readOnly &&
+            (field.type == FieldType.currency || field.type == FieldType.float)) {
+          final k = field.key.toLowerCase();
+          return AtlasTotalRow(
+            label: _label,
+            value: _atlasMoney(numVal),
+            emphasize: k.contains('grand') || _label.toLowerCase().contains('grand'),
+          );
+        }
+        return AtlasFieldRow(
+          icon: atlasFieldIcon(field),
+          label: _label,
+          required: field.required,
           readOnly: readOnly,
-          onChanged: (v) => onChanged(double.tryParse(v)),
+          value: readOnly ? numVal?.toString() : null,
+          child: readOnly
+              ? null
+              : _TextFieldEditor(
+                  value: numVal?.toString() ?? '',
+                  decoration: _atlasInline(
+                    context,
+                    prefixText:
+                        field.type == FieldType.currency ? currencySymbol : null,
+                    suffixText: field.type == FieldType.percent ? '%' : null,
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: _atlasValueStyle(context),
+                  readOnly: readOnly,
+                  onChanged: (v) => onChanged(double.tryParse(v)),
+                ),
         );
       case FieldType.select:
         final opts = (field.options ?? '')
@@ -1034,15 +1172,35 @@ class FieldWidget extends StatelessWidget {
           ),
         );
       case FieldType.longText:
+        if (ChildTableContext.isInline(context)) {
+          return _TextFieldEditor(
+            value: value as String? ?? '',
+            decoration: _decoration(context),
+            maxLines: 5,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
+        return AtlasFieldRow(
+          icon: atlasFieldIcon(field),
+          label: _label,
+          required: field.required,
+          readOnly: readOnly,
+          value: readOnly ? value as String? : null,
+          child: readOnly
+              ? null
+              : _TextFieldEditor(
+                  value: value as String? ?? '',
+                  decoration: _atlasInline(context, hintText: field.placeholder),
+                  maxLines: 5,
+                  style: _atlasValueStyle(context),
+                  readOnly: readOnly,
+                  onChanged: onChanged,
+                ),
+        );
       case FieldType.smallText:
       case FieldType.text:
-        return _TextFieldEditor(
-          value: value as String? ?? '',
-          decoration: _decoration(context),
-          maxLines: 5,
-          readOnly: readOnly,
-          onChanged: onChanged,
-        );
+        return _atlasTextRow(context);
       case FieldType.color:
         return ColorField(
           label: _label,
@@ -1117,12 +1275,7 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       default:
-        return _TextFieldEditor(
-          value: value?.toString() ?? '',
-          decoration: _decoration(context),
-          readOnly: readOnly,
-          onChanged: onChanged,
-        );
+        return _atlasTextRow(context);
     }
   }
 }
@@ -1295,6 +1448,8 @@ class _TextFieldEditor extends StatefulWidget {
     required this.onChanged,
     this.keyboardType,
     this.maxLines = 1,
+    this.textAlign = TextAlign.start,
+    this.style,
   });
   final String value;
   final InputDecoration decoration;
@@ -1302,6 +1457,8 @@ class _TextFieldEditor extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final TextInputType? keyboardType;
   final int maxLines;
+  final TextAlign textAlign;
+  final TextStyle? style;
 
   @override
   State<_TextFieldEditor> createState() => _TextFieldEditorState();
@@ -1335,6 +1492,8 @@ class _TextFieldEditorState extends State<_TextFieldEditor> {
       decoration: widget.decoration,
       keyboardType: widget.keyboardType,
       maxLines: widget.maxLines,
+      textAlign: widget.textAlign,
+      style: widget.style,
       readOnly: widget.readOnly,
       onChanged: widget.readOnly ? null : widget.onChanged,
     );
