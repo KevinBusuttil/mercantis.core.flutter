@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../shell/breakpoints.dart';
+import 'link_picker_field.dart';
 
 /// Shared across rows so the expression parse-cache is reused. Evaluates
 /// per-row `formulaExpression`s (e.g. `amount = qty * rate`) live as cells edit.
@@ -113,6 +114,8 @@ class ChildTableField extends StatefulWidget {
     required this.rows,
     required this.readOnly,
     required this.onChanged,
+    this.linkSearchProvider,
+    this.linkTargetResolver,
   });
 
   final ResolvedFieldDefinition field;
@@ -120,6 +123,12 @@ class ChildTableField extends StatefulWidget {
   final List<Map<String, dynamic>> rows;
   final bool readOnly;
   final ValueChanged<List<Map<String, dynamic>>> onChanged;
+
+  /// Threaded through to link-type columns so a row's link cell (e.g. a line's
+  /// Item) is a real picker, not a raw-id text box. Both optional — the picker
+  /// falls back to `engine.list(targetDocType)` and a title-key heuristic.
+  final LinkSearchProvider? linkSearchProvider;
+  final DocType? Function(String docTypeId)? linkTargetResolver;
 
   @override
   State<ChildTableField> createState() => _ChildTableFieldState();
@@ -232,6 +241,8 @@ class _ChildTableFieldState extends State<ChildTableField> {
                     readOnly: widget.readOnly,
                     onChanged: (updated) => _updateRow(i, updated),
                     onOpenEditor: () => _openRowEditor(childType, i),
+                    linkSearchProvider: widget.linkSearchProvider,
+                    linkTargetResolver: widget.linkTargetResolver,
                   ),
                   if (i < widget.rows.length - 1)
                     Divider(
@@ -291,6 +302,8 @@ class _ChildTableFieldState extends State<ChildTableField> {
                 initial: widget.rows[rowIndex],
                 readOnly: widget.readOnly,
                 scrollController: scroll,
+                linkSearchProvider: widget.linkSearchProvider,
+                linkTargetResolver: widget.linkTargetResolver,
               ),
             ),
           )
@@ -310,6 +323,8 @@ class _ChildTableFieldState extends State<ChildTableField> {
                   rowIndex: rowIndex,
                   initial: widget.rows[rowIndex],
                   readOnly: widget.readOnly,
+                  linkSearchProvider: widget.linkSearchProvider,
+                  linkTargetResolver: widget.linkTargetResolver,
                 ),
               ),
             ),
@@ -546,6 +561,8 @@ class _DataRow extends StatelessWidget {
     required this.readOnly,
     required this.onChanged,
     required this.onOpenEditor,
+    this.linkSearchProvider,
+    this.linkTargetResolver,
   });
 
   final List<FieldDefinition> fields;
@@ -554,6 +571,8 @@ class _DataRow extends StatelessWidget {
   final bool readOnly;
   final ValueChanged<Map<String, dynamic>> onChanged;
   final VoidCallback onOpenEditor;
+  final LinkSearchProvider? linkSearchProvider;
+  final DocType? Function(String docTypeId)? linkTargetResolver;
 
   void _setCell(String key, dynamic value) {
     final next = Map<String, dynamic>.from(row);
@@ -653,14 +672,19 @@ class _DataRow extends StatelessWidget {
         );
       case FieldType.link:
       case FieldType.dynamicLink:
-        // Links inline as plain text in cells; the per-row editor opens
-        // the full link picker.
-        return _CellTextField(
-          value: value?.toString() ?? '',
-          textAlign: TextAlign.start,
+        // A real picker in the cell: search + select the target record (e.g. an
+        // Item) and store its id, while showing its name. Dense variant so it
+        // sits at cell height without a redundant floating label.
+        return LinkPickerField(
+          label: f.label,
+          targetDocType: f.linkDocType ?? f.options ?? '',
+          value: value?.toString(),
+          required: f.required,
           readOnly: readOnly,
-          hint: f.label,
-          onChanged: (s) => _setCell(f.key, s),
+          onChanged: (v) => _setCell(f.key, v),
+          searchProvider: linkSearchProvider,
+          targetDocTypeResolver: linkTargetResolver,
+          dense: true,
         );
       default:
         return _CellTextField(
@@ -965,6 +989,8 @@ class _ChildRowEditor extends StatefulWidget {
     required this.initial,
     required this.readOnly,
     this.scrollController,
+    this.linkSearchProvider,
+    this.linkTargetResolver,
   });
 
   final DocType childDocType;
@@ -972,6 +998,8 @@ class _ChildRowEditor extends StatefulWidget {
   final Map<String, dynamic> initial;
   final bool readOnly;
   final ScrollController? scrollController;
+  final LinkSearchProvider? linkSearchProvider;
+  final DocType? Function(String docTypeId)? linkTargetResolver;
 
   @override
   State<_ChildRowEditor> createState() => _ChildRowEditorState();
@@ -1207,6 +1235,19 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),
           onChanged: ro ? null : (v) => _setDraft(f.key, v),
+        );
+      case FieldType.link:
+      case FieldType.dynamicLink:
+        // Full picker: search + select the target record (e.g. a line's Item).
+        return LinkPickerField(
+          label: f.label,
+          targetDocType: f.linkDocType ?? f.options ?? '',
+          value: value as String?,
+          required: f.required,
+          readOnly: ro,
+          onChanged: (v) => _setDraft(f.key, v),
+          searchProvider: widget.linkSearchProvider,
+          targetDocTypeResolver: widget.linkTargetResolver,
         );
       default:
         return TextFormField(

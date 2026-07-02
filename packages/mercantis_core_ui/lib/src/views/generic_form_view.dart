@@ -647,6 +647,10 @@ class _MetaForm extends StatelessWidget {
           rows: rows,
           readOnly: readOnly || f.readOnly,
           onChanged: (next) => onChildChanged(f.key, next),
+          // Give link columns (e.g. a line's Item) the same picker + resolver
+          // the top-level link fields use, so they're selectable, not raw text.
+          linkSearchProvider: linkSearchProvider,
+          linkTargetResolver: childDocTypeProvider,
         ),
       );
     }
