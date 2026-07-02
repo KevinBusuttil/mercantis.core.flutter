@@ -442,14 +442,17 @@ double _totalMinWidth(List<FieldDefinition> fields) {
 }
 
 /// A key that reads like a line quantity — used to give float qty fields the
-/// same − / + stepper the integer counts get in the line-item editor.
+/// same − / + stepper the integer counts get in the line-item editor. Matches
+/// `count` / `units` / `quantity` as whole key *tokens* (not raw substrings) so
+/// unrelated fields like `discount` or `account_balance` aren't mis-classified;
+/// `qty` is distinctive enough to match anywhere.
 bool _looksLikeQuantity(String key) {
   final k = key.toLowerCase();
-  return k == 'qty' ||
-      k.contains('qty') ||
-      k.contains('quantity') ||
-      k.contains('count') ||
-      k.contains('units');
+  if (k.contains('qty')) return true;
+  const qtyTokens = {'quantity', 'count', 'units', 'nos'};
+  return k
+      .split(RegExp(r'[^a-z0-9]+'))
+      .any(qtyTokens.contains);
 }
 
 bool _isNumeric(FieldType t) =>
@@ -1197,7 +1200,7 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
             required: f.required,
             value: value is num ? value : num.tryParse(value?.toString() ?? ''),
             min: 0,
-            onChanged: (v) => _setDraft(f.key, v.toInt()),
+            onChanged: (v) => _setDraft(f.key, v?.toInt()),
           );
         }
         return TextFormField(
@@ -1220,8 +1223,10 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
             required: f.required,
             value: value is num ? value : num.tryParse(value?.toString() ?? ''),
             min: 0,
-            decimals: 2,
-            onChanged: (v) => _setDraft(f.key, v.toDouble()),
+            // Honour the field's declared precision so a fractional qty isn't
+            // rounded to 2dp (e.g. 0.125 at precision 3 stays 0.125).
+            decimals: f.precision ?? 2,
+            onChanged: (v) => _setDraft(f.key, v?.toDouble()),
           );
         }
         return TextFormField(

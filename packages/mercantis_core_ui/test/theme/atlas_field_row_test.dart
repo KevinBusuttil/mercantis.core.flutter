@@ -125,7 +125,7 @@ void main() {
     });
 
     testWidgets('emits an int when decimals is 0', (tester) async {
-      final emitted = <num>[];
+      final emitted = <num?>[];
       await tester.pumpWidget(wrap(AtlasQuantityStepper(
         label: 'Qty',
         value: 2,
@@ -134,6 +134,23 @@ void main() {
       await tester.tap(find.byIcon(Icons.add));
       expect(emitted.single, 3);
       expect(emitted.single, isA<int>());
+    });
+
+    testWidgets('clearing the field emits null, not zero', (tester) async {
+      final emitted = <num?>[];
+      var reported = false;
+      await tester.pumpWidget(wrap(AtlasQuantityStepper(
+        label: 'Qty',
+        value: 4,
+        min: 0,
+        onChanged: (v) {
+          reported = true;
+          emitted.add(v);
+        },
+      )));
+      await tester.enterText(find.byType(TextField), '');
+      expect(reported, isTrue);
+      expect(emitted.last, isNull);
     });
 
     testWidgets('the − button clamps at min and disables', (tester) async {

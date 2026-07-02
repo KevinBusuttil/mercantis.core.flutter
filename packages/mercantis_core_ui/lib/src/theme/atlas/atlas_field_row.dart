@@ -283,7 +283,10 @@ class AtlasQuantityStepper extends StatefulWidget {
 
   final String label;
   final num? value;
-  final ValueChanged<num> onChanged;
+
+  /// Emits the new value, or `null` when the field is cleared — an optional
+  /// numeric left blank must stay blank, not silently become zero.
+  final ValueChanged<num?> onChanged;
   final bool required;
   final bool readOnly;
   final num? min;
@@ -301,7 +304,7 @@ class AtlasQuantityStepper extends StatefulWidget {
 
 class _AtlasQuantityStepperState extends State<AtlasQuantityStepper> {
   late final TextEditingController _controller =
-      TextEditingController(text: _format(widget.value ?? 0));
+      TextEditingController(text: _display(widget.value));
   final FocusNode _focus = FocusNode();
 
   @override
@@ -310,10 +313,14 @@ class _AtlasQuantityStepperState extends State<AtlasQuantityStepper> {
     // Re-sync from an external change (e.g. a formula) only while the user
     // isn't typing, so the cursor is never yanked mid-entry.
     if (!_focus.hasFocus) {
-      final text = _format(widget.value ?? 0);
+      final text = _display(widget.value);
       if (text != _controller.text) _controller.text = text;
     }
   }
+
+  /// A null value shows as blank (an intentionally empty optional numeric),
+  /// not "0".
+  String _display(num? v) => v == null ? '' : _format(v);
 
   @override
   void dispose() {
@@ -346,7 +353,11 @@ class _AtlasQuantityStepperState extends State<AtlasQuantityStepper> {
       widget.onChanged(widget.decimals == 0 ? v.round() : v.toDouble());
 
   void _bump(num delta) {
-    final next = _clamp(_parse(_controller.text) + delta);
+    // Stepping a blank field starts from the floor (min, or 0).
+    final base = _controller.text.trim().isEmpty
+        ? (widget.min ?? 0)
+        : _parse(_controller.text);
+    final next = _clamp(base + delta);
     // Buttons set the text explicitly so the field reflects the change even
     // while focused (didUpdateWidget skips focused re-syncs).
     _controller.text = _format(next);
@@ -357,7 +368,9 @@ class _AtlasQuantityStepperState extends State<AtlasQuantityStepper> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final current = _parse(_controller.text);
+    // A blank field is treated as the floor for enabling the − button.
+    final blank = _controller.text.trim().isEmpty;
+    final current = blank ? (widget.min ?? 0) : _parse(_controller.text);
     final canDec = !widget.readOnly &&
         !(widget.min != null && current <= widget.min!);
     final canInc = !widget.readOnly &&
@@ -402,8 +415,11 @@ class _AtlasQuantityStepperState extends State<AtlasQuantityStepper> {
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 10),
                   ),
-                  onChanged:
-                      widget.readOnly ? null : (s) => _emit(_clamp(_parse(s))),
+                  onChanged: widget.readOnly
+                      ? null
+                      : (s) => s.trim().isEmpty
+                          ? widget.onChanged(null)
+                          : _emit(_clamp(_parse(s))),
                 ),
               ),
               _StepButton(
