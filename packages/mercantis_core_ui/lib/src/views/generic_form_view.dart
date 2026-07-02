@@ -659,7 +659,10 @@ class _MetaForm extends StatelessWidget {
     return FieldWidget(
       field: f,
       value: doc[f.key],
-      readOnly: readOnly,
+      // Honour the field's own read-only flag as well as the form's — matches
+      // the child-table branch above. A metadata read-only field (e.g. a
+      // computed total) must render read-only even on an editable form.
+      readOnly: readOnly || f.readOnly,
       onChanged: (v) => onChanged(f.key, v),
       currencySymbol: currencySymbol,
       linkSearchProvider: linkSearchProvider,
