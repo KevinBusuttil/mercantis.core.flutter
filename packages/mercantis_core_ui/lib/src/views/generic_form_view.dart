@@ -1448,7 +1448,6 @@ class _TextFieldEditor extends StatefulWidget {
     required this.onChanged,
     this.keyboardType,
     this.maxLines = 1,
-    this.textAlign = TextAlign.start,
     this.style,
   });
   final String value;
@@ -1457,7 +1456,6 @@ class _TextFieldEditor extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final TextInputType? keyboardType;
   final int maxLines;
-  final TextAlign textAlign;
   final TextStyle? style;
 
   @override
@@ -1492,7 +1490,6 @@ class _TextFieldEditorState extends State<_TextFieldEditor> {
       decoration: widget.decoration,
       keyboardType: widget.keyboardType,
       maxLines: widget.maxLines,
-      textAlign: widget.textAlign,
       style: widget.style,
       readOnly: widget.readOnly,
       onChanged: widget.readOnly ? null : widget.onChanged,
