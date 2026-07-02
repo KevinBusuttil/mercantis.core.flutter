@@ -1058,9 +1058,12 @@ class FieldWidget extends StatelessWidget {
           );
         }
         final numVal = value as num?;
-        // A read-only currency / float is a computed money value → totals row;
-        // the grand total gets the tinted emphasis.
-        if (readOnly &&
+        // A field marked read-only *in its own metadata* is a computed money
+        // value → totals row; the grand total gets the tinted emphasis. Gate on
+        // field.readOnly (not the form-wide readOnly, which is also true for any
+        // submitted document) so a plain Rate on a submitted doc stays a normal
+        // scalar row rather than a summary line.
+        if (field.readOnly &&
             (field.type == FieldType.currency || field.type == FieldType.float)) {
           final k = field.key.toLowerCase();
           return AtlasTotalRow(
@@ -1189,9 +1192,13 @@ class FieldWidget extends StatelessWidget {
           label: _label,
           required: field.required,
           readOnly: readOnly,
-          value: readOnly ? value as String? : null,
+          // Read-only long text keeps its line breaks — render the full value
+          // as a multi-line child rather than the row's single-line value slot.
           child: readOnly
-              ? null
+              ? Text(
+                  value as String? ?? '',
+                  style: _atlasValueStyle(context),
+                )
               : _TextFieldEditor(
                   value: value as String? ?? '',
                   decoration: _atlasInline(context, hintText: field.placeholder),
