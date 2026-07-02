@@ -4,6 +4,7 @@ import 'package:mercantis_core/mercantis_core.dart';
 
 import '../providers/core_providers.dart';
 import '../shell/breakpoints.dart';
+import '../theme/atlas/atlas_field_row.dart';
 import '../views/form_field_support.dart';
 
 /// Roles used when persisting an inline-created linked record — mirrors
@@ -94,6 +95,8 @@ class LinkPickerField extends ConsumerStatefulWidget {
     this.targetDocTypeResolver,
     this.enableInlineCreate = true,
     this.dense = false,
+    this.atlas = false,
+    this.icon,
   });
 
   final String label;
@@ -123,6 +126,14 @@ class LinkPickerField extends ConsumerStatefulWidget {
   /// tightens padding so it sits at cell height. The tap-to-search behaviour
   /// and title resolution are unchanged.
   final bool dense;
+
+  /// Render as an [AtlasFieldRow] — a mobile-first list row (tinted icon ·
+  /// small label · resolved name · chevron) that opens the same picker on tap.
+  /// The default outlined presentation is used inside dense child-table cells.
+  final bool atlas;
+
+  /// Leading glyph for the [atlas] row (ignored otherwise).
+  final IconData? icon;
 
   @override
   ConsumerState<LinkPickerField> createState() => _LinkPickerFieldState();
@@ -199,6 +210,20 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
   @override
   Widget build(BuildContext context) {
     final hasValue = (widget.value ?? '').isNotEmpty;
+    if (widget.atlas) {
+      // Mobile-first list row that reuses the same picker + name resolution.
+      final display =
+          hasValue ? (_displayTitleFor(widget.value!) ?? widget.value!) : null;
+      return AtlasFieldRow(
+        icon: widget.icon,
+        label: widget.label,
+        required: widget.required,
+        readOnly: widget.readOnly,
+        value: display,
+        placeholder: 'Choose ${widget.label}',
+        onTap: widget.readOnly ? null : _openPicker,
+      );
+    }
     // InkWell wraps the whole InputDecorator so the entire decorated
     // surface — label, border padding, suffix icon — counts as the tap
     // target. Nesting the InkWell inside the decorator's child made only

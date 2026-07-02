@@ -5,6 +5,7 @@ export 'src/theme/tokens/radius.dart';
 export 'src/theme/tokens/elevation.dart';
 export 'src/theme/tokens/typography.dart';
 export 'src/theme/tokens/brand_colors.dart';
+export 'src/theme/atlas/atlas_field_row.dart';
 
 // Providers
 export 'src/providers/core_providers.dart';

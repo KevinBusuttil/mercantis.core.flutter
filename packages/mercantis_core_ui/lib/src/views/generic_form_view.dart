@@ -6,6 +6,8 @@ import '../metadata/metadata_display.dart';
 import '../providers/core_providers.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
+import '../theme/atlas/atlas_field_row.dart';
+import '../theme/tokens/spacing.dart';
 import '../widgets/child_table_field.dart';
 import '../widgets/fields/attachment_field.dart';
 import '../widgets/fields/barcode_field.dart';
@@ -954,6 +956,17 @@ class FieldWidget extends StatelessWidget {
             .split('\n')
             .where((o) => o.isNotEmpty)
             .toList();
+        // Atlas selector row on a form; the outlined dropdown only inside a
+        // child-table cell (where the column header carries the label).
+        if (!ChildTableContext.isInline(context)) {
+          return _AtlasSelectRow(
+            field: field,
+            value: value as String?,
+            options: opts,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
         return DropdownButtonFormField<String>(
           initialValue: value as String?,
           decoration: _decoration(context),
@@ -963,6 +976,14 @@ class FieldWidget extends StatelessWidget {
           onChanged: readOnly ? null : (v) => onChanged(v),
         );
       case FieldType.date:
+        if (!ChildTableContext.isInline(context)) {
+          return _AtlasDateRow(
+            field: field,
+            value: value as String?,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
         return _DateField(
           label: _label,
           required: field.required,
@@ -996,6 +1017,10 @@ class FieldWidget extends StatelessWidget {
           searchProvider: linkSearchProvider,
           targetDocTypeResolver: childDocTypeProvider,
           onChanged: onChanged,
+          // Atlas selector row on a form; the outlined field only inside a
+          // dense child-table cell.
+          atlas: !ChildTableContext.isInline(context),
+          icon: atlasFieldIcon(field),
         );
       case FieldType.heading:
         return Padding(
@@ -1132,6 +1157,131 @@ class _RequiredAwareLabel extends StatelessWidget {
           TextSpan(text: label),
           if (required) TextSpan(text: ' *', style: asteriskStyle),
         ]),
+      ),
+    );
+  }
+}
+
+/// Atlas selector row for a `date` field — shows the formatted value (or a
+/// "Choose <label>" placeholder) and opens a date picker on tap.
+class _AtlasDateRow extends StatelessWidget {
+  const _AtlasDateRow({
+    required this.field,
+    required this.value,
+    required this.readOnly,
+    required this.onChanged,
+  });
+  final ResolvedFieldDefinition field;
+  final String? value;
+  final bool readOnly;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = DateTime.tryParse(value ?? '');
+    final display =
+        parsed != null ? DateFormat('d MMM yyyy').format(parsed) : (value ?? '');
+    return AtlasFieldRow(
+      icon: atlasFieldIcon(field),
+      label: field.label,
+      required: field.required,
+      readOnly: readOnly,
+      value: display,
+      placeholder: 'Choose ${field.label}',
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: parsed ?? DateTime.now(),
+          firstDate: DateTime(1900),
+          lastDate: DateTime(2100),
+        );
+        if (picked != null) {
+          onChanged(DateFormat('yyyy-MM-dd').format(picked));
+        }
+      },
+    );
+  }
+}
+
+/// Atlas selector row for a `select` field — shows the chosen option (or a
+/// "Select <label>" placeholder) and opens an option sheet on tap.
+class _AtlasSelectRow extends StatelessWidget {
+  const _AtlasSelectRow({
+    required this.field,
+    required this.value,
+    required this.options,
+    required this.readOnly,
+    required this.onChanged,
+  });
+  final ResolvedFieldDefinition field;
+  final String? value;
+  final List<String> options;
+  final bool readOnly;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return AtlasFieldRow(
+      icon: atlasFieldIcon(field),
+      label: field.label,
+      required: field.required,
+      readOnly: readOnly || options.isEmpty,
+      value: value,
+      placeholder: 'Select ${field.label}',
+      onTap: () async {
+        final picked = await showModalBottomSheet<String>(
+          context: context,
+          showDragHandle: true,
+          builder: (_) =>
+              _OptionSheet(title: field.label, options: options, selected: value),
+        );
+        if (picked != null) onChanged(picked);
+      },
+    );
+  }
+}
+
+/// Bottom-sheet list of [options] for an Atlas select row; pops the chosen
+/// value on tap.
+class _OptionSheet extends StatelessWidget {
+  const _OptionSheet({
+    required this.title,
+    required this.options,
+    required this.selected,
+  });
+  final String title;
+  final List<String> options;
+  final String? selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(MercantisSpacing.lg, 0,
+                MercantisSpacing.lg, MercantisSpacing.sm),
+            child: Text(title, style: theme.textTheme.titleSmall),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final o in options)
+                  ListTile(
+                    title: Text(o),
+                    trailing: o == selected
+                        ? Icon(Icons.check, color: theme.colorScheme.primary)
+                        : null,
+                    onTap: () => Navigator.of(context).pop(o),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
