@@ -128,9 +128,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    // Change qty 3 -> 5; amount must re-derive to 5 * 12 = 60 and be saved.
-    final qtyField = find.byKey(const ValueKey('int_qty_edit'));
-    expect(qtyField, findsOneWidget);
+    // Change qty 3 -> 5 via the Atlas quantity stepper; amount must re-derive
+    // to 5 * 12 = 60 and be saved.
+    final stepper = find.byType(AtlasQuantityStepper);
+    expect(stepper, findsOneWidget);
+    final qtyField =
+        find.descendant(of: stepper, matching: find.byType(TextField));
     await tester.enterText(qtyField, '5');
     await tester.pump();
 

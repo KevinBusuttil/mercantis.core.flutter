@@ -103,6 +103,64 @@ void main() {
     );
   });
 
+  group('AtlasQuantityStepper', () {
+    testWidgets('+ / − step the value and report the change', (tester) async {
+      num? latest;
+      Widget stepper(num value) => wrap(AtlasQuantityStepper(
+            label: 'Qty',
+            value: value,
+            min: 0,
+            onChanged: (v) => latest = v,
+          ));
+
+      await tester.pumpWidget(stepper(3));
+      expect(find.text('3'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add));
+      expect(latest, 4);
+
+      await tester.pumpWidget(stepper(4));
+      await tester.tap(find.byIcon(Icons.remove));
+      expect(latest, 3);
+    });
+
+    testWidgets('emits an int when decimals is 0', (tester) async {
+      final emitted = <num>[];
+      await tester.pumpWidget(wrap(AtlasQuantityStepper(
+        label: 'Qty',
+        value: 2,
+        onChanged: emitted.add,
+      )));
+      await tester.tap(find.byIcon(Icons.add));
+      expect(emitted.single, 3);
+      expect(emitted.single, isA<int>());
+    });
+
+    testWidgets('the − button clamps at min and disables', (tester) async {
+      num? latest;
+      await tester.pumpWidget(wrap(AtlasQuantityStepper(
+        label: 'Qty',
+        value: 0,
+        min: 0,
+        onChanged: (v) => latest = v,
+      )));
+      // At the floor the − tap target is disabled, so tapping is a no-op.
+      await tester.tap(find.byIcon(Icons.remove));
+      expect(latest, isNull);
+    });
+
+    testWidgets('typing a value emits it', (tester) async {
+      num? latest;
+      await tester.pumpWidget(wrap(AtlasQuantityStepper(
+        label: 'Qty',
+        value: 1,
+        onChanged: (v) => latest = v,
+      )));
+      await tester.enterText(find.byType(TextField), '7');
+      expect(latest, 7);
+    });
+  });
+
   group('atlasFieldIcon', () {
     IconData? ic(String key, FieldType type) =>
         atlasFieldIcon(FieldDefinition(key: key, label: key, type: type));
