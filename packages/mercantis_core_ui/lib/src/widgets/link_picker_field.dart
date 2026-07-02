@@ -93,6 +93,7 @@ class LinkPickerField extends ConsumerStatefulWidget {
     this.searchProvider,
     this.targetDocTypeResolver,
     this.enableInlineCreate = true,
+    this.dense = false,
   });
 
   final String label;
@@ -116,6 +117,12 @@ class LinkPickerField extends ConsumerStatefulWidget {
   /// sheet can prefer the registry's title field. Optional — falls
   /// back to a built-in key heuristic.
   final DocType? Function(String docTypeId)? targetDocTypeResolver;
+
+  /// Compact variant for embedding in a dense surface such as a child-table
+  /// cell: drops the floating label (the column header already names it) and
+  /// tightens padding so it sits at cell height. The tap-to-search behaviour
+  /// and title resolution are unchanged.
+  final bool dense;
 
   @override
   ConsumerState<LinkPickerField> createState() => _LinkPickerFieldState();
@@ -202,13 +209,22 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
       onTap: widget.readOnly ? null : _openPicker,
       borderRadius: BorderRadius.circular(4),
       child: InputDecorator(
-        decoration: InputDecoration(
-          label: _RequiredAwareLabel(
-            label: widget.label,
-            required: widget.required,
-          ),
-          suffixIcon: const Icon(Icons.link),
-        ),
+        decoration: widget.dense
+            ? const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.link, size: 18),
+                suffixIconConstraints:
+                    BoxConstraints(minWidth: 32, minHeight: 32),
+              )
+            : InputDecoration(
+                label: _RequiredAwareLabel(
+                  label: widget.label,
+                  required: widget.required,
+                ),
+                suffixIcon: const Icon(Icons.link),
+              ),
         child: Row(
           children: [
             Expanded(
