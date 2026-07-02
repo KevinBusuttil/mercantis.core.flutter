@@ -47,6 +47,9 @@ void main() {
         FieldDefinition(key: 'urgent', label: 'Urgent', type: FieldType.check),
         FieldDefinition(key: 'total', label: 'Total', type: FieldType.currency, readOnly: true),
         FieldDefinition(key: 'grand_total', label: 'Grand Total', type: FieldType.currency, readOnly: true),
+        // A read-only float (e.g. an exchange rate) must NOT become a money
+        // totals row — only currency totals do.
+        FieldDefinition(key: 'conversion_rate', label: 'Conversion Rate', type: FieldType.float, readOnly: true),
       ],
     ));
     await database.db.insert('documents', {
@@ -130,7 +133,9 @@ void main() {
     await drain(tester);
     expect(tester.takeException(), isNull);
 
-    // Read-only currency fields become totals rows (Total + Grand Total).
+    // Only read-only *currency* fields become totals rows (Total + Grand
+    // Total) — the read-only float (conversion_rate) must NOT, so the count
+    // stays exactly 2.
     expect(find.byType(AtlasTotalRow), findsNWidgets(2));
     expect(find.text('Total'), findsOneWidget);
     expect(find.text('Grand Total'), findsOneWidget);

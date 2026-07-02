@@ -1058,13 +1058,14 @@ class FieldWidget extends StatelessWidget {
           );
         }
         final numVal = value as num?;
-        // A field marked read-only *in its own metadata* is a computed money
-        // value → totals row; the grand total gets the tinted emphasis. Gate on
-        // field.readOnly (not the form-wide readOnly, which is also true for any
-        // submitted document) so a plain Rate on a submitted doc stays a normal
-        // scalar row rather than a summary line.
-        if (field.readOnly &&
-            (field.type == FieldType.currency || field.type == FieldType.float)) {
+        // A read-only *currency* field is a computed money value → totals row;
+        // the grand total gets the tinted emphasis. Gate on field.readOnly (not
+        // the form-wide readOnly, which is also true for any submitted document)
+        // so a plain Rate stays a normal scalar row. Restrict to currency, not
+        // float: a read-only float such as an exchange/conversion rate (e.g.
+        // 3.333) is not money and must not be rounded to 2dp with a currency
+        // symbol — it renders as a plain read-only value row below.
+        if (field.readOnly && field.type == FieldType.currency) {
           final k = field.key.toLowerCase();
           return AtlasTotalRow(
             label: _label,
