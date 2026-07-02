@@ -48,6 +48,61 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsNothing);
   });
 
+  testWidgets('AtlasSummaryCard shows its title and groups total rows',
+      (tester) async {
+    await tester.pumpWidget(wrap(const AtlasSummaryCard(
+      title: 'Totals',
+      children: [
+        AtlasTotalRow(label: 'Net Total', value: '100.00'),
+        AtlasTotalRow(label: 'Grand Total', value: '118.00', emphasize: true),
+      ],
+    )));
+    expect(find.text('TOTALS'), findsOneWidget); // header is upper-cased
+    expect(find.byType(AtlasTotalRow), findsNWidgets(2));
+    expect(find.text('Net Total'), findsOneWidget);
+    expect(find.text('Grand Total'), findsOneWidget);
+  });
+
+  testWidgets('AtlasSummaryCard omits the header when title is blank',
+      (tester) async {
+    await tester.pumpWidget(wrap(const AtlasSummaryCard(
+      children: [AtlasTotalRow(label: 'Total', value: '5.00')],
+    )));
+    expect(find.byType(AtlasTotalRow), findsOneWidget);
+    expect(find.text('Total'), findsOneWidget);
+  });
+
+  testWidgets('AtlasSummaryCard stays bounded and scrolls a tall totals list',
+      (tester) async {
+    // Mirrors how _MetaForm pins the card: a non-flex Column child is laid out
+    // with unbounded height, so it must be handed a bounded height. With that
+    // bound the card caps its content to a fraction and scrolls the overflow
+    // instead of growing without limit and starving the body.
+    await tester.pumpWidget(wrap(Column(
+      children: [
+        const Expanded(child: SizedBox.expand()),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: AtlasSummaryCard(
+            title: 'Totals',
+            children: [
+              for (var i = 0; i < 30; i++)
+                AtlasTotalRow(label: 'Row $i', value: '$i.00'),
+            ],
+          ),
+        ),
+      ],
+    )));
+    expect(tester.takeException(), isNull);
+    expect(
+      find.descendant(
+        of: find.byType(AtlasSummaryCard),
+        matching: find.byType(Scrollable),
+      ),
+      findsOneWidget,
+    );
+  });
+
   group('atlasFieldIcon', () {
     IconData? ic(String key, FieldType type) =>
         atlasFieldIcon(FieldDefinition(key: key, label: key, type: type));

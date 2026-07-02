@@ -140,6 +140,17 @@ void main() {
     expect(find.text('Total'), findsOneWidget);
     expect(find.text('Grand Total'), findsOneWidget);
 
+    // Step 3: those totals are grouped into a single pinned summary card, and
+    // both total rows live inside it (lifted out of the section flow).
+    expect(find.byType(AtlasSummaryCard), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AtlasSummaryCard),
+        matching: find.byType(AtlasTotalRow),
+      ),
+      findsNWidgets(2),
+    );
+
     // The boolean field is a toggle row.
     expect(find.byType(Switch), findsOneWidget);
 

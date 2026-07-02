@@ -560,9 +560,42 @@ class _MetaForm extends StatelessWidget {
   bool _containsTable(_SectionGroup g) => g.fields.any(
       (f) => f.type == FieldType.table || f.type == FieldType.tableMultiSelect);
 
+  /// A computed money value — a read-only currency field. These are the
+  /// document's totals; Step 3 lifts them out of the section flow and groups
+  /// them into a pinned [AtlasSummaryCard] at the foot of the form. Matches the
+  /// same rule [FieldWidget] uses to render them as [AtlasTotalRow].
+  static bool _isSummaryField(ResolvedFieldDefinition f) =>
+      f.readOnly && f.type == FieldType.currency;
+
   @override
   Widget build(BuildContext context) {
     final groups = _groupedSections();
+    // Step 3: lift the document's money totals (read-only currency fields) out
+    // of the ordinary section flow so they can be grouped and pinned as one
+    // summary card. A section that held only totals drops out of the body; its
+    // name titles the summary card so the grouping still reads in context.
+    final summaryFields = <ResolvedFieldDefinition>[];
+    String? summaryTitle;
+    final bodyGroups = <_SectionGroup>[];
+    for (final g in groups) {
+      final kept = <ResolvedFieldDefinition>[];
+      for (final f in g.fields) {
+        if (_isSummaryField(f)) {
+          summaryFields.add(f);
+          summaryTitle ??= g.name.trim().isNotEmpty ? g.name : null;
+        } else {
+          kept.add(f);
+        }
+      }
+      if (kept.isNotEmpty) {
+        bodyGroups.add(_SectionGroup(
+          name: g.name,
+          columns: g.columns,
+          explicit: g.explicit,
+          fields: kept,
+        ));
+      }
+    }
     // Responsive layout: on a wide pane (tablet-landscape and desktop, ≥ 840px
     // of *available* width — measured, not the screen, so it's correct inside a
     // master-detail split) compact fields pair up into two columns so forms use
@@ -581,12 +614,12 @@ class _MetaForm extends StatelessWidget {
         // default only where the caller didn't specify a count.
         int columnsFor(_SectionGroup g) =>
             g.explicit ? g.columns : (wide ? 2 : 1);
-        return SingleChildScrollView(
+        final body = SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final g in groups) ...[
+              for (final g in bodyGroups) ...[
                 _SectionCard(
                   name: g.name,
                   containsTable: _containsTable(g),
@@ -610,6 +643,30 @@ class _MetaForm extends StatelessWidget {
               ],
             ],
           ),
+        );
+        if (summaryFields.isEmpty) return body;
+        // Pin the grouped totals to the foot of the form so the bottom line
+        // stays in view while the fields scroll above it. _MetaForm is hosted
+        // in an Expanded, so `constraints` here is bounded — but a non-flex
+        // child of a Column is laid out with *unbounded* height, so we must
+        // hand that bounded height to the footer explicitly. Without it,
+        // AtlasSummaryCard sees an infinite maxHeight, its 45% cap never
+        // applies, and a tall totals list could grow to full content and
+        // starve the scrolling body.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: body),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: constraints.maxHeight),
+              child: AtlasSummaryCard(
+                title: summaryTitle,
+                children: [
+                  for (final f in summaryFields) _buildField(f, false),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
