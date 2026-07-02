@@ -647,16 +647,24 @@ class _MetaForm extends StatelessWidget {
         if (summaryFields.isEmpty) return body;
         // Pin the grouped totals to the foot of the form so the bottom line
         // stays in view while the fields scroll above it. _MetaForm is hosted
-        // in an Expanded, so the height here is bounded and the footer sticks.
+        // in an Expanded, so `constraints` here is bounded — but a non-flex
+        // child of a Column is laid out with *unbounded* height, so we must
+        // hand that bounded height to the footer explicitly. Without it,
+        // AtlasSummaryCard sees an infinite maxHeight, its 45% cap never
+        // applies, and a tall totals list could grow to full content and
+        // starve the scrolling body.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(child: body),
-            AtlasSummaryCard(
-              title: summaryTitle,
-              children: [
-                for (final f in summaryFields) _buildField(f, false),
-              ],
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: constraints.maxHeight),
+              child: AtlasSummaryCard(
+                title: summaryTitle,
+                children: [
+                  for (final f in summaryFields) _buildField(f, false),
+                ],
+              ),
             ),
           ],
         );

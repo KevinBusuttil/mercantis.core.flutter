@@ -72,6 +72,37 @@ void main() {
     expect(find.text('Total'), findsOneWidget);
   });
 
+  testWidgets('AtlasSummaryCard stays bounded and scrolls a tall totals list',
+      (tester) async {
+    // Mirrors how _MetaForm pins the card: a non-flex Column child is laid out
+    // with unbounded height, so it must be handed a bounded height. With that
+    // bound the card caps its content to a fraction and scrolls the overflow
+    // instead of growing without limit and starving the body.
+    await tester.pumpWidget(wrap(Column(
+      children: [
+        const Expanded(child: SizedBox.expand()),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: AtlasSummaryCard(
+            title: 'Totals',
+            children: [
+              for (var i = 0; i < 30; i++)
+                AtlasTotalRow(label: 'Row $i', value: '$i.00'),
+            ],
+          ),
+        ),
+      ],
+    )));
+    expect(tester.takeException(), isNull);
+    expect(
+      find.descendant(
+        of: find.byType(AtlasSummaryCard),
+        matching: find.byType(Scrollable),
+      ),
+      findsOneWidget,
+    );
+  });
+
   group('atlasFieldIcon', () {
     IconData? ic(String key, FieldType type) =>
         atlasFieldIcon(FieldDefinition(key: key, label: key, type: type));
