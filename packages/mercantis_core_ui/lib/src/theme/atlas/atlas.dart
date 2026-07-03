@@ -9,6 +9,7 @@ export 'atlas_colors.dart';
 export 'atlas_date_field_row.dart';
 export 'atlas_field_icon.dart';
 export 'atlas_field_row.dart';
+export 'atlas_floating_action_button.dart';
 export 'atlas_icon_chip.dart';
 export 'atlas_label.dart';
 export 'atlas_money_field.dart';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../shell/breakpoints.dart';
 import '../shell/responsive_scaffold.dart';
+import '../theme/atlas/atlas.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
 import '../widgets/quick_action_tile.dart';
@@ -91,10 +92,10 @@ class WorkspaceView extends ConsumerWidget {
         ],
       ),
       floatingActionButton: isPhone && descriptor.quickActions.isNotEmpty
-          ? FloatingActionButton.extended(
+          ? AtlasFloatingActionButton(
               onPressed: () => _showQuickActions(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Action'),
+              icon: Icons.add,
+              label: 'Action',
             )
           : null,
     );

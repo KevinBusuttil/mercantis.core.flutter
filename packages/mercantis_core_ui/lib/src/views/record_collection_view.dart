@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/core_providers.dart';
+import '../theme/atlas/atlas.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/link_picker_field.dart';
 import 'record_tree_view.dart';
@@ -174,11 +175,11 @@ class _RecordCollectionViewState extends ConsumerState<RecordCollectionView> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AtlasFloatingActionButton(
         onPressed: () =>
             GoRouter.of(context).go('/form/${widget.docTypeName}/new'),
-        icon: const Icon(Icons.add),
-        label: Text(widget.newButtonLabel ?? 'New $resolvedTitle'),
+        icon: Icons.add,
+        label: widget.newButtonLabel ?? 'New $resolvedTitle',
       ),
       body: docsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
