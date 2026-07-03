@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
-import '../shell/breakpoints.dart';
 import '../theme/atlas/atlas.dart';
 import 'link_picker_field.dart';
 
@@ -284,52 +283,18 @@ class _ChildTableFieldState extends State<ChildTableField> {
   }
 
   Future<void> _openRowEditor(DocType childType, int rowIndex) async {
-    final breakpoint = Breakpoint.of(context);
-    final isPhone = breakpoint.isPhone;
-
-    final result = await (isPhone
-        ? showModalBottomSheet<_RowEditorResult>(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            builder: (ctx) => DraggableScrollableSheet(
-              initialChildSize: 0.85,
-              minChildSize: 0.5,
-              maxChildSize: 0.95,
-              expand: false,
-              builder: (_, scroll) => _ChildRowEditor(
-                childDocType: childType,
-                rowIndex: rowIndex,
-                initial: widget.rows[rowIndex],
-                readOnly: widget.readOnly,
-                scrollController: scroll,
-                linkSearchProvider: widget.linkSearchProvider,
-                linkTargetResolver: widget.linkTargetResolver,
-              ),
-            ),
-          )
-        : showDialog<_RowEditorResult>(
-            context: context,
-            builder: (ctx) => Dialog(
-              clipBehavior: Clip.antiAlias,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minWidth: 420,
-                  maxWidth: 560,
-                  minHeight: 420,
-                  maxHeight: 640,
-                ),
-                child: _ChildRowEditor(
-                  childDocType: childType,
-                  rowIndex: rowIndex,
-                  initial: widget.rows[rowIndex],
-                  readOnly: widget.readOnly,
-                  linkSearchProvider: widget.linkSearchProvider,
-                  linkTargetResolver: widget.linkTargetResolver,
-                ),
-              ),
-            ),
-          ));
+    final result = await showAtlasBottomSheet<_RowEditorResult>(
+      context,
+      builder: (ctx, scroll) => _ChildRowEditor(
+        childDocType: childType,
+        rowIndex: rowIndex,
+        initial: widget.rows[rowIndex],
+        readOnly: widget.readOnly,
+        scrollController: scroll,
+        linkSearchProvider: widget.linkSearchProvider,
+        linkTargetResolver: widget.linkTargetResolver,
+      ),
+    );
 
     if (!mounted || result == null) return;
     if (result.removed) {
@@ -1082,99 +1047,38 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final fields = widget.childDocType.fields
         .where((f) => !f.hidden && !_isLayout(f.type))
         .toList();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Grab handle — only in the draggable bottom-sheet variant (phone),
-        // where scrollController is supplied; the dialog variant omits it.
-        if (widget.scrollController != null)
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(top: 8, bottom: 2),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(999),
-              ),
+    final summary = _summary();
+    return AtlasBottomSheet(
+      showHandle: widget.scrollController != null,
+      title: 'Edit ${widget.childDocType.name} · #${widget.rowIndex + 1}',
+      subtitle: summary.isNotEmpty ? summary : null,
+      body: ListView(
+        controller: widget.scrollController,
+        padding: const EdgeInsets.all(16),
+        children: [
+          for (final f in fields)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _editorControl(context, f),
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Edit ${widget.childDocType.name} · #${widget.rowIndex + 1}',
-                style: theme.textTheme.titleSmall,
-              ),
-              if (_summary().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    _summary(),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Flexible(
-          child: ListView(
-            controller: widget.scrollController,
-            padding: const EdgeInsets.all(16),
-            children: [
-              for (final f in fields)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _editorControl(context, f),
-                ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              if (!widget.readOnly)
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.error,
-                  ),
-                  onPressed: _confirmRemove,
-                  child: const Text('Remove row'),
-                ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () {
-                  // Belt-and-suspenders: re-derive once more so the saved row
-                  // is consistent regardless of which control last edited it.
-                  applyRowFormulas(widget.childDocType.fields, _draft);
-                  Navigator.of(context).pop(_RowEditorResult.updated(_draft));
-                },
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
+      footer: AtlasBottomActionBar(
+        destructiveLabel: widget.readOnly ? null : 'Remove row',
+        onDestructive: _confirmRemove,
+        secondaryLabel: 'Cancel',
+        onSecondary: () => Navigator.of(context).pop(),
+        primaryLabel: 'Done',
+        onPrimary: () {
+          // Belt-and-suspenders: re-derive once more so the saved row is
+          // consistent regardless of which control last edited it.
+          applyRowFormulas(widget.childDocType.fields, _draft);
+          Navigator.of(context).pop(_RowEditorResult.updated(_draft));
+        },
+      ),
     );
   }
 

@@ -2,6 +2,8 @@
 /// single path regardless of how the components are split across files.
 library;
 
+export 'atlas_bottom_action_bar.dart';
+export 'atlas_bottom_sheet.dart';
 export 'atlas_colors.dart';
 export 'atlas_date_field_row.dart';
 export 'atlas_field_icon.dart';
