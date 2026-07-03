@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../theme/atlas/atlas.dart';
+import '../views/form_field_support.dart';
 import 'link_picker_field.dart';
 
 /// Shared across rows so the expression parse-cache is reused. Evaluates
@@ -114,6 +115,7 @@ class ChildTableField extends StatefulWidget {
     required this.rows,
     required this.readOnly,
     required this.onChanged,
+    this.errors,
     this.linkSearchProvider,
     this.linkTargetResolver,
   });
@@ -123,6 +125,13 @@ class ChildTableField extends StatefulWidget {
   final List<Map<String, dynamic>> rows;
   final bool readOnly;
   final ValueChanged<List<Map<String, dynamic>>> onChanged;
+
+  /// Server-attributed validation errors for this table from the last
+  /// save/submit, keyed row index → child field key → message. A row-level
+  /// error (no offending field, e.g. a duplicate-row rule) uses the
+  /// empty-string key. Drives the per-row error badge and the row editor's
+  /// inline messages. Null/absent when the table is clean.
+  final Map<int, Map<String, String>>? errors;
 
   /// Threaded through to link-type columns so a row's link cell (e.g. a line's
   /// Item) is a real picker, not a raw-id text box. Both optional — the picker
@@ -143,6 +152,21 @@ class _ChildTableFieldState extends State<ChildTableField> {
   void dispose() {
     _hScroll.dispose();
     super.dispose();
+  }
+
+  /// The error map for one row, or null when that row is clean.
+  Map<String, String>? _rowErrors(int idx) {
+    final e = widget.errors?[idx];
+    return (e == null || e.isEmpty) ? null : e;
+  }
+
+  /// A single-line tooltip/summary for a row's errors — the first message,
+  /// with a "+N more" suffix when several fields failed.
+  String? _rowErrorSummary(int idx) {
+    final e = _rowErrors(idx);
+    if (e == null) return null;
+    final first = e.values.first;
+    return e.length > 1 ? '$first  (+${e.length - 1} more)' : first;
   }
 
   void _updateRow(int idx, Map<String, dynamic> updated) {
@@ -240,6 +264,7 @@ class _ChildTableFieldState extends State<ChildTableField> {
                     rowIndex: i,
                     row: widget.rows[i],
                     readOnly: widget.readOnly,
+                    errorSummary: _rowErrorSummary(i),
                     onChanged: (updated) => _updateRow(i, updated),
                     onOpenEditor: () => _openRowEditor(childType, i),
                     linkSearchProvider: widget.linkSearchProvider,
@@ -293,6 +318,7 @@ class _ChildTableFieldState extends State<ChildTableField> {
               amountField: amount,
               rowIndex: i,
               row: widget.rows[i],
+              errorSummary: _rowErrorSummary(i),
               onTap: () => _openRowEditor(childType, i),
             ),
           ),
@@ -308,6 +334,7 @@ class _ChildTableFieldState extends State<ChildTableField> {
         rowIndex: rowIndex,
         initial: widget.rows[rowIndex],
         readOnly: widget.readOnly,
+        errors: _rowErrors(rowIndex),
         scrollController: scroll,
         linkSearchProvider: widget.linkSearchProvider,
         linkTargetResolver: widget.linkTargetResolver,
@@ -586,6 +613,7 @@ class _DataRow extends StatelessWidget {
     required this.readOnly,
     required this.onChanged,
     required this.onOpenEditor,
+    this.errorSummary,
     this.linkSearchProvider,
     this.linkTargetResolver,
   });
@@ -596,6 +624,10 @@ class _DataRow extends StatelessWidget {
   final bool readOnly;
   final ValueChanged<Map<String, dynamic>> onChanged;
   final VoidCallback onOpenEditor;
+
+  /// Non-null when the last save/submit flagged this row; drives the error
+  /// tint and the trailing error affordance (tap opens the editor to fix it).
+  final String? errorSummary;
   final LinkSearchProvider? linkSearchProvider;
   final DocType? Function(String docTypeId)? linkTargetResolver;
 
@@ -609,9 +641,12 @@ class _DataRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = rowIndex.isEven
-        ? Colors.transparent
-        : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.4);
+    final hasError = errorSummary != null;
+    final bg = hasError
+        ? theme.colorScheme.errorContainer.withValues(alpha: 0.25)
+        : rowIndex.isEven
+            ? Colors.transparent
+            : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.4);
     // Inline cells advertise themselves via [ChildTableContext] so any
     // shared input wrapper inside the cell (FieldWidget, future custom
     // pickers, etc.) can suppress its external label and field chrome.
@@ -647,8 +682,12 @@ class _DataRow extends StatelessWidget {
             SizedBox(
               width: _kTrailingCellWidth,
               child: IconButton(
-                tooltip: 'Edit row',
-                icon: const Icon(Icons.more_vert, size: 18),
+                tooltip: hasError ? errorSummary : 'Edit row',
+                icon: Icon(
+                  hasError ? Icons.error_outline : Icons.more_vert,
+                  size: 18,
+                  color: hasError ? theme.colorScheme.error : null,
+                ),
                 onPressed: onOpenEditor,
               ),
             ),
@@ -849,6 +888,7 @@ class _RowCard extends StatelessWidget {
     required this.rowIndex,
     required this.row,
     required this.onTap,
+    this.errorSummary,
   });
 
   final List<FieldDefinition> fields;
@@ -857,16 +897,29 @@ class _RowCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final VoidCallback onTap;
 
+  /// Non-null when the last save/submit flagged this row; shown as an inline
+  /// error line under the title and drives the card's error tint/outline.
+  final String? errorSummary;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = _rowTitle(fields, row, rowIndex);
     final drivers = _rowDrivers(fields, row, amountField);
     final amountVal = amountField == null ? null : row[amountField!.key];
+    final hasError = errorSummary != null;
     return Material(
-      color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+      color: hasError
+          ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
+          : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
+      shape: hasError
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: theme.colorScheme.error),
+            )
+          : null,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -912,6 +965,27 @@ class _RowCard extends StatelessWidget {
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    if (hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 14, color: theme.colorScheme.error),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                errorSummary!,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: theme.colorScheme.error),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
@@ -995,6 +1069,7 @@ class _ChildRowEditor extends StatefulWidget {
     required this.rowIndex,
     required this.initial,
     required this.readOnly,
+    this.errors,
     this.scrollController,
     this.linkSearchProvider,
     this.linkTargetResolver,
@@ -1004,6 +1079,11 @@ class _ChildRowEditor extends StatefulWidget {
   final int rowIndex;
   final Map<String, dynamic> initial;
   final bool readOnly;
+
+  /// Server-attributed errors for this row, keyed child field key → message
+  /// (the empty-string key holds a row-level error). Rendered inline beneath
+  /// each offending control, with any row-level error as a banner up top.
+  final Map<String, String>? errors;
   final ScrollController? scrollController;
   final LinkSearchProvider? linkSearchProvider;
   final DocType? Function(String docTypeId)? linkTargetResolver;
@@ -1086,10 +1166,15 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
         controller: widget.scrollController,
         padding: const EdgeInsets.all(16),
         children: [
+          if ((widget.errors?[''] ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _RowErrorBanner(message: widget.errors!['']!),
+            ),
           for (final f in fields)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _editorControl(context, f),
+              child: _fieldWithError(context, f),
             ),
         ],
       ),
@@ -1106,6 +1191,23 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           Navigator.of(context).pop(_RowEditorResult.updated(_draft));
         },
       ),
+    );
+  }
+
+  /// Wraps a field's control with its server-attributed inline error (if any),
+  /// mirroring the parent form's field footnotes. The Atlas row components
+  /// don't each carry an error slot, so the message is rendered just beneath
+  /// the control — keeping the change localized to the editor.
+  Widget _fieldWithError(BuildContext context, FieldDefinition f) {
+    final control = _editorControl(context, f);
+    final error = widget.errors?[f.key];
+    if (error == null || error.isEmpty) return control;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        control,
+        FieldFootnote(error: error),
+      ],
     );
   }
 
@@ -1242,5 +1344,40 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           onChanged: (s) => _draft[f.key] = s,
         );
     }
+  }
+}
+
+/// A prominent row-level error banner for the top of the row editor — used for
+/// errors the engine attributes to the whole row (e.g. a duplicate-row rule)
+/// rather than to a single field.
+class _RowErrorBanner extends StatelessWidget {
+  const _RowErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onErrorContainer,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
