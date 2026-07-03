@@ -15,6 +15,7 @@ class AtlasDateFieldRow extends StatelessWidget {
     this.readOnly = false,
     required this.value,
     required this.onChanged,
+    this.onCleared,
   });
 
   final IconData? icon;
@@ -24,11 +25,18 @@ class AtlasDateFieldRow extends StatelessWidget {
   final String? value;
   final ValueChanged<String> onChanged;
 
+  /// When supplied (and the field has a value and is editable), a trailing
+  /// clear button lets the user remove an optional date — the picker alone
+  /// can only change it, never empty it.
+  final VoidCallback? onCleared;
+
   @override
   Widget build(BuildContext context) {
     final parsed = DateTime.tryParse(value ?? '');
     final display =
         parsed != null ? DateFormat('d MMM yyyy').format(parsed) : (value ?? '');
+    final canClear =
+        onCleared != null && !readOnly && (value ?? '').isNotEmpty;
     return AtlasFieldRow(
       icon: icon,
       label: label,
@@ -36,6 +44,7 @@ class AtlasDateFieldRow extends StatelessWidget {
       readOnly: readOnly,
       value: display,
       placeholder: 'Choose $label',
+      trailing: canClear ? _AtlasClearButton(onPressed: onCleared!) : null,
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
@@ -45,6 +54,24 @@ class AtlasDateFieldRow extends StatelessWidget {
         );
         if (picked != null) onChanged(DateFormat('yyyy-MM-dd').format(picked));
       },
+    );
+  }
+}
+
+/// Small trailing "clear" affordance for a selector row that carries an
+/// optional value (replaces the chevron while a value is present).
+class _AtlasClearButton extends StatelessWidget {
+  const _AtlasClearButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.close, size: 18),
+      visualDensity: VisualDensity.compact,
+      tooltip: 'Clear',
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      onPressed: onPressed,
     );
   }
 }

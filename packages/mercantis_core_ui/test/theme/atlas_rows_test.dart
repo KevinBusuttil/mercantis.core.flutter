@@ -111,6 +111,87 @@ void main() {
     expect(find.text('TOTALS'), findsOneWidget);
     expect(find.text('body'), findsOneWidget);
   });
+
+  testWidgets(
+      'AtlasTextFieldEditor does not corrupt live input when the parent '
+      'feeds back a normalised value while typing', (tester) async {
+    // Regression for the money-input corruption: a parent that rebuilds on
+    // every keystroke and normalises "1" -> "1.0" must NOT be echoed back into
+    // the field while it has focus (which turned the next digit into "1.02"
+    // instead of "12"). The editor only re-syncs from an external value when
+    // it isn't focused.
+    await tester.pumpWidget(wrap(_NormalisingEditorHarness()));
+
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, '1');
+    await tester.pump();
+
+    // The raw text the user typed survives — it is not rewritten to "1.0".
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('1.0'), findsNothing);
+  });
+
+  testWidgets(
+      'AtlasDateFieldRow exposes a clear button that fires onCleared, and only '
+      'when there is a value and a handler', (tester) async {
+    var cleared = false;
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: '2026-07-03',
+      onChanged: (_) {},
+      onCleared: () => cleared = true,
+    )));
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
+    expect(cleared, isTrue);
+
+    // No value -> nothing to clear.
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: null,
+      onChanged: (_) {},
+      onCleared: () {},
+    )));
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    // Value but no handler -> no clear affordance.
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: '2026-07-03',
+      onChanged: (_) {},
+    )));
+    expect(find.byIcon(Icons.close), findsNothing);
+  });
+}
+
+/// A parent that mimics the form's per-keystroke rebuild: it stores whatever
+/// the editor emits but feeds back a *normalised* copy ("1" -> "1.0"). If the
+/// editor re-synced from that while focused it would corrupt the caret.
+class _NormalisingEditorHarness extends StatefulWidget {
+  @override
+  State<_NormalisingEditorHarness> createState() =>
+      _NormalisingEditorHarnessState();
+}
+
+class _NormalisingEditorHarnessState extends State<_NormalisingEditorHarness> {
+  String _value = '';
+
+  String _normalise(String raw) {
+    final n = num.tryParse(raw);
+    return n == null ? raw : n.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AtlasTextFieldEditor(
+      value: _value,
+      decoration: const InputDecoration(),
+      readOnly: false,
+      keyboardType: TextInputType.number,
+      onChanged: (raw) => setState(() => _value = _normalise(raw)),
+    );
+  }
 }
 
 void _noop(String _) {}

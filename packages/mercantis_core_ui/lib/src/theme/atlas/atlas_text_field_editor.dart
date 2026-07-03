@@ -32,11 +32,16 @@ class AtlasTextFieldEditor extends StatefulWidget {
 class _AtlasTextFieldEditorState extends State<AtlasTextFieldEditor> {
   late final TextEditingController _controller =
       TextEditingController(text: widget.value);
+  final FocusNode _focus = FocusNode();
 
   @override
   void didUpdateWidget(AtlasTextFieldEditor old) {
     super.didUpdateWidget(old);
-    if (widget.value != _controller.text) {
+    // Only re-sync from an external value change (e.g. a formula recompute)
+    // while the user isn't typing. Otherwise a parent that rebuilds on every
+    // keystroke — and feeds back a *normalised* value (e.g. "1" → "1.0") —
+    // would fight the caret and corrupt live input (1 → 1.0 → 1.02).
+    if (!_focus.hasFocus && widget.value != _controller.text) {
       _controller.value = TextEditingValue(
         text: widget.value,
         selection: TextSelection.collapsed(offset: widget.value.length),
@@ -47,6 +52,7 @@ class _AtlasTextFieldEditorState extends State<AtlasTextFieldEditor> {
   @override
   void dispose() {
     _controller.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -54,6 +60,7 @@ class _AtlasTextFieldEditorState extends State<AtlasTextFieldEditor> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _controller,
+      focusNode: _focus,
       decoration: widget.decoration,
       keyboardType: widget.keyboardType,
       maxLines: widget.maxLines,

@@ -1189,6 +1189,8 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           readOnly: ro,
           value: value as String?,
           onChanged: (s) => _setDraft(f.key, s),
+          // Optional dates can be emptied (the picker only changes a date).
+          onCleared: (ro || f.required) ? null : () => _setDraft(f.key, null),
         );
       case FieldType.longText:
         return AtlasTextInputRow(
