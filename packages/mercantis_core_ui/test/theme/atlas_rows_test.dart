@@ -111,6 +111,113 @@ void main() {
     expect(find.text('TOTALS'), findsOneWidget);
     expect(find.text('body'), findsOneWidget);
   });
+
+  testWidgets(
+      'AtlasTextFieldEditor does not corrupt live input when the parent '
+      'feeds back a normalised value while typing', (tester) async {
+    // Regression for the money-input corruption: a parent that rebuilds on
+    // every keystroke and normalises "1" -> "1.0" must NOT be echoed back into
+    // the field while it has focus (which turned the next digit into "1.02"
+    // instead of "12"). The editor only re-syncs from an external value when
+    // it isn't focused.
+    await tester.pumpWidget(wrap(_NormalisingEditorHarness()));
+
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, '1');
+    await tester.pump();
+
+    // The raw text the user typed survives — it is not rewritten to "1.00".
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('1.00'), findsNothing);
+  });
+
+  testWidgets(
+      'AtlasTextFieldEditor reconciles to the external value on blur so stale '
+      'text cannot outlive editing', (tester) async {
+    // The focus guard drops external updates while typing; this pins the other
+    // half of the contract — once focus is lost the controller must snap back
+    // to the authoritative value. Here an unparsable entry is coerced to blank
+    // by the parent, so after blur the field must show blank, not the stale
+    // text that a save would never persist.
+    await tester.pumpWidget(wrap(_NormalisingEditorHarness()));
+
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, 'abc');
+    await tester.pump();
+    // While focused, the just-typed text is still shown (update was dropped).
+    expect(find.text('abc'), findsOneWidget);
+
+    // Blur: the controller reconciles to the parent's coerced blank value.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(find.text('abc'), findsNothing);
+  });
+
+  testWidgets(
+      'AtlasDateFieldRow exposes a clear button that fires onCleared, and only '
+      'when there is a value and a handler', (tester) async {
+    var cleared = false;
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: '2026-07-03',
+      onChanged: (_) {},
+      onCleared: () => cleared = true,
+    )));
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
+    expect(cleared, isTrue);
+
+    // No value -> nothing to clear.
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: null,
+      onChanged: (_) {},
+      onCleared: () {},
+    )));
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    // Value but no handler -> no clear affordance.
+    await tester.pumpWidget(wrap(AtlasDateFieldRow(
+      label: 'Delivery Date',
+      value: '2026-07-03',
+      onChanged: (_) {},
+    )));
+    expect(find.byIcon(Icons.close), findsNothing);
+  });
+}
+
+/// A parent that mimics the form's per-keystroke rebuild: it stores whatever
+/// the editor emits but feeds back a *normalised* copy ("1" -> "1.0"). If the
+/// editor re-synced from that while focused it would corrupt the caret.
+class _NormalisingEditorHarness extends StatefulWidget {
+  @override
+  State<_NormalisingEditorHarness> createState() =>
+      _NormalisingEditorHarnessState();
+}
+
+class _NormalisingEditorHarnessState extends State<_NormalisingEditorHarness> {
+  String _value = '';
+
+  String _normalise(String raw) {
+    // Mimics a money parent: parse to a number and echo back a *reformatted*
+    // string ("1" -> "1.00"), and coerce an unparsable entry to blank — both
+    // of which diverge from the user's raw keystrokes.
+    final n = num.tryParse(raw);
+    return n == null ? '' : n.toStringAsFixed(2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AtlasTextFieldEditor(
+      value: _value,
+      decoration: const InputDecoration(),
+      readOnly: false,
+      keyboardType: TextInputType.number,
+      onChanged: (raw) => setState(() => _value = _normalise(raw)),
+    );
+  }
 }
 
 void _noop(String _) {}

@@ -1087,6 +1087,10 @@ class FieldWidget extends StatelessWidget {
             value: value as String?,
             readOnly: readOnly,
             onChanged: onChanged,
+            // Optional dates can be cleared (the picker only changes a date).
+            onCleared: (readOnly || field.required)
+                ? null
+                : () => onChanged(null),
           );
         }
         return _DateField(
