@@ -6,7 +6,7 @@ import '../metadata/metadata_display.dart';
 import '../providers/core_providers.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
-import '../theme/atlas/atlas_field_row.dart';
+import '../theme/atlas/atlas.dart';
 import '../theme/tokens/spacing.dart';
 import '../widgets/child_table_field.dart';
 import '../widgets/fields/attachment_field.dart';

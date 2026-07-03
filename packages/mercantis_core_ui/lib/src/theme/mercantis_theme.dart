@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'atlas/atlas_colors.dart';
 import 'tokens/brand_colors.dart';
+import 'tokens/elevation.dart';
 import 'tokens/radius.dart';
 import 'tokens/typography.dart';
 
@@ -27,11 +29,15 @@ class MercantisTheme {
       colorScheme: cs,
       textTheme: textTheme,
       scaffoldBackgroundColor: cs.surface,
+      // The Atlas semantic colour tokens, derived from this scheme, registered
+      // so widgets read one named source (AtlasColors.of(context)) with smooth
+      // light/dark lerping instead of hand-tuning raw ColorScheme roles.
+      extensions: [AtlasColors.fromColorScheme(cs)],
       appBarTheme: AppBarTheme(
         backgroundColor: cs.surface,
         foregroundColor: cs.onSurface,
-        elevation: 0,
-        scrolledUnderElevation: 1,
+        elevation: MercantisElevation.none,
+        scrolledUnderElevation: MercantisElevation.low,
         centerTitle: false,
         titleTextStyle: textTheme.titleLarge,
       ),
@@ -134,6 +140,31 @@ class MercantisTheme {
       ),
       dialogTheme: const DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: MercantisRadius.rLg),
+      ),
+      // Baseline for every bottom sheet: 24pt top corners + a quiet drag handle,
+      // so the ~9 hand-rolled sheets read consistently now and the Atlas sheet
+      // primitive (Phase 2) inherits the same shape.
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: cs.surface,
+        surfaceTintColor: Colors.transparent,
+        modalElevation: MercantisElevation.overlay,
+        dragHandleColor: cs.onSurfaceVariant.withValues(alpha: 0.4),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(MercantisRadius.xl),
+          ),
+        ),
+      ),
+      // Flatter FAB than the M3 default so it matches the elevation-0 chrome
+      // instead of floating heavily over content.
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        elevation: MercantisElevation.low,
+        focusElevation: MercantisElevation.low,
+        hoverElevation: MercantisElevation.medium,
+        highlightElevation: MercantisElevation.low,
+        backgroundColor: cs.primaryContainer,
+        foregroundColor: cs.onPrimaryContainer,
+        shape: const RoundedRectangleBorder(borderRadius: MercantisRadius.rLg),
       ),
     );
   }

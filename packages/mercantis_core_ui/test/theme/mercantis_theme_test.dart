@@ -46,5 +46,21 @@ void main() {
       expect(theme.tabBarTheme.labelColor, cs.primary);
       expect(theme.tabBarTheme.unselectedLabelColor, cs.onSurfaceVariant);
     });
+
+    test('$name: registers the AtlasColors extension derived from the scheme',
+        () {
+      final atlas = theme.extension<AtlasColors>();
+      expect(atlas, isNotNull);
+      expect(atlas!.primary, cs.primary);
+      expect(atlas.primarySoft, cs.primary.withValues(alpha: 0.12));
+    });
+
+    test('$name: bottom sheet + FAB carry the Atlas baseline', () {
+      // Sheets get 24pt top corners and a quiet drag handle.
+      expect(theme.bottomSheetTheme.shape, isA<RoundedRectangleBorder>());
+      expect(theme.bottomSheetTheme.dragHandleColor, isNotNull);
+      // FAB is flatter than the M3 default (6) to match the elevation-0 chrome.
+      expect(theme.floatingActionButtonTheme.elevation, 1);
+    });
   }
 }

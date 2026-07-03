@@ -4,7 +4,7 @@ import 'package:mercantis_core/mercantis_core.dart';
 
 import '../providers/core_providers.dart';
 import '../shell/breakpoints.dart';
-import '../theme/atlas/atlas_field_row.dart';
+import '../theme/atlas/atlas.dart';
 import '../views/form_field_support.dart';
 
 /// Roles used when persisting an inline-created linked record — mirrors

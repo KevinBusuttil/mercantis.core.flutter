@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 class MercantisTypography {
   const MercantisTypography._();
 
+  /// Tabular (monospaced-digit) figures for money and quantity values so
+  /// columns of numbers align on the decimal. The single source consumed by
+  /// AtlasTotalRow and the money field, rather than inlining the feature list.
+  static const List<FontFeature> tabularFigures = [
+    FontFeature.tabularFigures(),
+  ];
+
   static TextTheme build(ColorScheme cs) {
     return TextTheme(
       displayLarge: TextStyle(
