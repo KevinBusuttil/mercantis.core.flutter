@@ -109,6 +109,29 @@ void main() {
         expect(msg, contains('• …'));
         expect(msg, isNot(contains('• problem 4')));
       });
+
+      test('exposes the structured errors for field-level distribution', () {
+        const errors = [
+          ValidationError(
+              stage: 'RequiredField',
+              fieldKey: 'customer_type',
+              message: 'Customer Type is required'),
+          ValidationError(
+              stage: 'ChildTableValidation',
+              fieldKey: 'items[1].rate',
+              message: 'Row 2: Rate is required'),
+        ];
+        final err = DocumentEngineError.validationFailed(errors);
+        expect(err.validationErrors, hasLength(2));
+        expect(err.validationErrors.first.fieldKey, 'customer_type');
+        expect(err.validationErrors.last.fieldKey, 'items[1].rate');
+      });
+    });
+
+    test('non-validation cases expose no structured errors', () {
+      expect(DocumentEngineError.docTypeNotFound('X').validationErrors, isEmpty);
+      expect(
+          DocumentEngineError.concurrencyConflict('Y').validationErrors, isEmpty);
     });
   });
 }

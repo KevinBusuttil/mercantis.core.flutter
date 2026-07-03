@@ -15,6 +15,14 @@ sealed class DocumentEngineError implements Exception {
   /// in source for now (the Swift side is the same).
   String get humanMessage;
 
+  /// The structured, per-field validation errors carried by a
+  /// [DocumentEngineError.validationFailed]; empty for every other case.
+  ///
+  /// Lets the form distribute messages onto the fields / child rows that
+  /// caused them (`fieldKey`s like `items[2].rate`) instead of only surfacing
+  /// the collapsed [humanMessage] banner.
+  List<ValidationError> get validationErrors => const [];
+
   /// A stored row couldn't be deserialised — usually means the payload
   /// was written by an incompatible schema version.
   const factory DocumentEngineError.malformedRow(String details) =
@@ -179,6 +187,8 @@ class _ValidationFailed extends DocumentEngineError {
   final List<ValidationError> errors;
   @override
   String get humanMessage => _humanValidationMessage(errors);
+  @override
+  List<ValidationError> get validationErrors => errors;
   @override
   String toString() =>
       'DocumentEngineError.validationFailed(${errors.length} errors)';

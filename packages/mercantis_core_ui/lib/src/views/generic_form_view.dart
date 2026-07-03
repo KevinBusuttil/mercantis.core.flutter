@@ -56,6 +56,44 @@ Document applyChildChanges(
   return base.copyWith(children: children);
 }
 
+/// Matches an engine `fieldKey` that points into a child table —
+/// `items[2]` (a whole row) or `items[2].rate` (a row's field).
+final RegExp _childErrorKeyPattern =
+    RegExp(r'^([A-Za-z0-9_]+)\[(\d+)\](?:\.(.+))?$');
+
+/// The engine prefixes each child-row message with "Row N:"; stripped when
+/// distributing since the row index is already the map key.
+final RegExp _rowPrefixPattern = RegExp(r'^Row \d+:\s*');
+
+/// Partitions engine [ValidationError]s into parent-field messages (keyed by
+/// field key) and child-table messages (table key → row index → child field
+/// key → message; a whole-row error uses the empty-string key). Pure and
+/// exported so the fieldKey-routing — the tricky part of Phase 3c — is
+/// unit-tested without standing up the whole form.
+({
+  Map<String, String> parent,
+  Map<String, Map<int, Map<String, String>>> child,
+}) partitionValidationErrors(List<ValidationError> errors) {
+  final parent = <String, String>{};
+  final child = <String, Map<int, Map<String, String>>>{};
+  for (final e in errors) {
+    final key = e.fieldKey;
+    if (key == null) continue;
+    final match = _childErrorKeyPattern.firstMatch(key);
+    if (match == null) {
+      parent[key] = e.message;
+      continue;
+    }
+    final tableKey = match.group(1)!;
+    final rowIndex = int.parse(match.group(2)!);
+    final childField = match.group(3) ?? '';
+    final message = e.message.replaceFirst(_rowPrefixPattern, '');
+    (child[tableKey] ??= {})
+        .putIfAbsent(rowIndex, () => <String, String>{})[childField] = message;
+  }
+  return (parent: parent, child: child);
+}
+
 final _fetchDocProvider =
     FutureProvider.family<Document?, (String, String?)>((ref, args) async {
   final (docTypeName, name) = args;
@@ -195,6 +233,31 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   final Map<String, String> _fieldErrors = {};
   final Set<String> _touched = {};
 
+  /// Server-attributed child-table errors from the last save/submit, keyed
+  /// table field key → row index → child field key → message. A row-level
+  /// error (no child field, e.g. a duplicate-row rule) is stored under the
+  /// empty-string key. Cleared for a table as soon as the user edits its rows,
+  /// since the stale server verdict no longer applies to the new content.
+  final Map<String, Map<int, Map<String, String>>> _childErrors = {};
+
+  /// Spreads the engine's [ValidationError]s onto the fields/rows that caused
+  /// them: parent-field errors reuse the existing inline-error channel
+  /// ([_fieldErrors]); child-row errors populate [_childErrors] so the offending
+  /// row shows a badge and its editor shows the message inline — instead of only
+  /// the collapsed banner. Callers setState around this.
+  void _distributeValidationErrors(List<ValidationError> errors) {
+    final split = partitionValidationErrors(errors);
+    _childErrors
+      ..clear()
+      ..addAll(split.child);
+    split.parent.forEach((key, message) {
+      // Surface inline beneath the offending control (mark touched so the
+      // existing gate lets it render).
+      _touched.add(key);
+      _fieldErrors[key] = message;
+    });
+  }
+
   /// Re-evaluates one field against the current document and stores/clears its
   /// inline error. Only touched fields contribute to the surfaced map.
   void _validateField(ResolvedMeta meta, String key, Document doc) {
@@ -271,11 +334,21 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       setState(() {
         _changes.clear();
         _childChanges.clear();
+        // A clean save means no outstanding errors — drop any the previous
+        // failed attempt attributed to fields/rows.
+        _fieldErrors.clear();
+        _childErrors.clear();
       });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() =>
-          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+      setState(() {
+        if (e is DocumentEngineError) {
+          _error = e.humanMessage;
+          _distributeValidationErrors(e.validationErrors);
+        } else {
+          _error = e.toString();
+        }
+      });
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -309,10 +382,20 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     });
     try {
       await engine.submit(current, _userRoles);
+      setState(() {
+        _fieldErrors.clear();
+        _childErrors.clear();
+      });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
     } catch (e) {
-      setState(() =>
-          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+      setState(() {
+        if (e is DocumentEngineError) {
+          _error = e.humanMessage;
+          _distributeValidationErrors(e.validationErrors);
+        } else {
+          _error = e.toString();
+        }
+      });
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -406,14 +489,20 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
                             readOnly: docStatus != 0,
                             sectionColumns: widget.sectionColumns,
                             errors: _fieldErrors,
+                            childErrors: _childErrors,
                             currencySymbol: currencySymbol,
                             onChanged: (k, v) => setState(() {
                               _changes[k] = v;
                               _touched.add(k);
                               _validateField(meta, k, _apply(base));
                             }),
-                            onChildChanged: (k, rows) =>
-                                setState(() => _childChanges[k] = rows),
+                            onChildChanged: (k, rows) => setState(() {
+                              _childChanges[k] = rows;
+                              // The user changed this table's rows, so any
+                              // server verdict attributed to its old content is
+                              // stale — drop it until the next save re-checks.
+                              _childErrors.remove(k);
+                            }),
                             linkSearchProvider: widget.linkSearchProvider,
                             childDocTypeProvider: effectiveChildResolver,
                           ),
@@ -474,6 +563,7 @@ class _MetaForm extends StatelessWidget {
     required this.onChanged,
     required this.onChildChanged,
     this.errors = const {},
+    this.childErrors = const {},
     this.currencySymbol,
     this.sectionColumns,
     this.linkSearchProvider,
@@ -486,6 +576,11 @@ class _MetaForm extends StatelessWidget {
   /// Inline validation errors keyed by field key — rendered as a footnote
   /// beneath the offending control.
   final Map<String, String> errors;
+
+  /// Server-attributed child-table errors, keyed table field key → row index →
+  /// child field key → message. Threaded into each [ChildTableField] to drive
+  /// per-row badges and inline editor messages.
+  final Map<String, Map<int, Map<String, String>>> childErrors;
 
   /// Symbol prefixed onto `.currency` editors (e.g. "€"), or null.
   final String? currencySymbol;
@@ -705,6 +800,8 @@ class _MetaForm extends StatelessWidget {
           rows: rows,
           readOnly: readOnly || f.readOnly,
           onChanged: (next) => onChildChanged(f.key, next),
+          // Server-attributed per-row errors for this table (null when clean).
+          errors: childErrors[f.key],
           // Give link columns (e.g. a line's Item) the same picker + resolver
           // the top-level link fields use, so they're selectable, not raw text.
           linkSearchProvider: linkSearchProvider,
