@@ -42,7 +42,9 @@ void main() {
       readOnly: false,
       onChanged: (_) {},
     )));
-    expect(find.byType(InputDecorator), findsOneWidget);
+    // The outer outlined box carries the floating label (the two hours/minutes
+    // TextFields have their own inner decorators, so count the label instead).
+    expect(find.text('Length'), findsOneWidget);
 
     await tester.pumpWidget(wrap(DurationField(
       label: 'Length',
@@ -52,8 +54,9 @@ void main() {
       onChanged: (_) {},
       embedded: true,
     )));
-    expect(find.byType(InputDecorator), findsNothing);
-    expect(find.byType(TextField), findsNWidgets(2)); // hours + minutes
+    // Embedded drops the outer label; only the hours + minutes fields remain.
+    expect(find.text('Length'), findsNothing);
+    expect(find.byType(TextField), findsNWidgets(2));
   });
 
   testWidgets('ColorField: outlined by default, bare when embedded',
