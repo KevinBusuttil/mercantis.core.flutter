@@ -128,6 +128,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
+    // The editor now renders Atlas rows (fork closed): the currency rate/amount
+    // are AtlasMoneyField, not plain Material fields.
+    expect(find.byType(AtlasMoneyField), findsWidgets);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+
     // Change qty 3 -> 5 via the Atlas quantity stepper; amount must re-derive
     // to 5 * 12 = 60 and be saved.
     final stepper = find.byType(AtlasQuantityStepper);
