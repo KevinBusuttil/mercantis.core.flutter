@@ -221,7 +221,33 @@ void main() {
       ));
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'layout error at $size');
-      expect(find.text('No rows yet.'), findsOneWidget, reason: 'at $size');
+      // Business-worded empty state derived from the table label ("Items"),
+      // with a single "Add Item" call to action (the footer add is hidden
+      // while empty).
+      expect(find.text('No items yet'), findsOneWidget, reason: 'at $size');
+      expect(find.text('Add Item'), findsOneWidget, reason: 'at $size');
     }
+  });
+
+  testWidgets('read-only empty table shows no add action', (tester) async {
+    tester.view.physicalSize = const Size(380, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ChildTableField(
+            field: tableField,
+            childDocType: childType,
+            rows: const [],
+            readOnly: true,
+            onChanged: (_) {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('No items yet'), findsOneWidget);
+    expect(find.text('Add Item'), findsNothing);
   });
 }
