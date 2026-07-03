@@ -114,4 +114,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(result, 'picked');
   });
+
+  testWidgets('showAtlasBottomSheet(draggable:false) is a fixed phone modal',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 800); // phone
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    ScrollController? seen;
+    var sawController = false;
+    await tester.pumpWidget(wrap(Builder(builder: (context) {
+      return TextButton(
+        onPressed: () => showAtlasBottomSheet<void>(
+          context,
+          draggable: false,
+          builder: (ctx, scroll) {
+            sawController = true;
+            seen = scroll;
+            return const AtlasBottomSheet(
+              title: 'Picker',
+              showHandle: false,
+              body: Text('picker-body'),
+            );
+          },
+        ),
+        child: const Text('open'),
+      );
+    })));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    // A fixed modal — no DraggableScrollableSheet, and the builder got a null
+    // controller (the picker owns its own scroll).
+    expect(find.byType(DraggableScrollableSheet), findsNothing);
+    expect(find.text('picker-body'), findsOneWidget);
+    expect(sawController, isTrue);
+    expect(seen, isNull);
+  });
 }

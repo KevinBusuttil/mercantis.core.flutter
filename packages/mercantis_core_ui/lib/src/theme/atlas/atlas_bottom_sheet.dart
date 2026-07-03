@@ -21,6 +21,7 @@ Future<T?> showAtlasBottomSheet<T>(
   double initialSize = 0.85,
   double minSize = 0.5,
   double maxSize = 0.95,
+  bool draggable = true,
   BoxConstraints dialogConstraints = const BoxConstraints(
     minWidth: 420,
     maxWidth: 560,
@@ -29,6 +30,19 @@ Future<T?> showAtlasBottomSheet<T>(
   ),
 }) {
   if (Breakpoint.of(context).isPhone) {
+    // A [draggable] sheet resizes with a handle and forwards a ScrollController
+    // to its scrollable body (the default — for a form-like editor). A sheet
+    // that owns its own scroll (e.g. a search picker with a fixed header +
+    // results list) opts out and gets a plain fixed modal, with a null
+    // controller passed to the builder.
+    if (!draggable) {
+      return showModalBottomSheet<T>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => builder(ctx, null),
+      );
+    }
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
