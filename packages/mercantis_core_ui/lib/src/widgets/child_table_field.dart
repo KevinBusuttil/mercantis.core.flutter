@@ -205,6 +205,7 @@ class _ChildTableFieldState extends State<ChildTableField> {
         _FooterBar(
           rowCount: widget.rows.length,
           readOnly: widget.readOnly,
+          addLabel: 'Add ${_singularize(widget.field.label.trim().isEmpty ? childType.name : widget.field.label.trim())}',
           onAdd: () => _addRow(childType),
         ),
       ],
@@ -231,7 +232,7 @@ class _ChildTableFieldState extends State<ChildTableField> {
               _HeaderRow(fields: fields),
               Divider(height: 1, color: theme.dividerColor),
               if (widget.rows.isEmpty)
-                _EmptyRow(width: gridWidth)
+                SizedBox(width: gridWidth, child: _emptyState(childType))
               else
                 for (var i = 0; i < widget.rows.length; i++) ...[
                   _DataRow(
@@ -257,9 +258,26 @@ class _ChildTableFieldState extends State<ChildTableField> {
     );
   }
 
+  /// Business-worded empty state derived from the table's own label — "No items
+  /// yet" with an "Add Item" call to action (or read-only message).
+  Widget _emptyState(DocType childType) {
+    final plural = widget.field.label.trim().isEmpty
+        ? childType.name
+        : widget.field.label.trim();
+    final singular = _singularize(plural);
+    return AtlasChildTableEmptyState(
+      title: 'No ${plural.toLowerCase()} yet',
+      message: widget.readOnly
+          ? null
+          : 'Add ${_indefinite(singular)} to get started.',
+      addLabel: widget.readOnly ? null : 'Add $singular',
+      onAdd: widget.readOnly ? null : () => _addRow(childType),
+    );
+  }
+
   Widget _buildCards(DocType childType, List<FieldDefinition> fields) {
     if (widget.rows.isEmpty) {
-      return const _EmptyRow(width: double.infinity);
+      return _emptyState(childType);
     }
     final amount = _amountField(fields);
     return Column(
@@ -487,8 +505,35 @@ String _fmtNum(dynamic v) {
   return v.toString();
 }
 
-/// Featured currency amount, always two decimals (`36` → `36.00`).
-String _fmtAmount(num v) => v.toStringAsFixed(2);
+/// Featured currency amount, honouring the column's declared precision
+/// (falling back to two decimals): `36` → `36.00`.
+String _fmtAmount(num v, [int? precision]) =>
+    v.toStringAsFixed(precision ?? 2);
+
+/// Best-effort singular of a table label so add actions read in business terms
+/// ("Items" → "Item", "Taxes" → "Tax", "Entries" → "Entry").
+String _singularize(String label) {
+  final t = label.trim();
+  if (t.length <= 1) return t;
+  final lower = t.toLowerCase();
+  if (lower.endsWith('ies')) return '${t.substring(0, t.length - 3)}y';
+  if (lower.endsWith('ses') ||
+      lower.endsWith('xes') ||
+      lower.endsWith('zes') ||
+      lower.endsWith('ches') ||
+      lower.endsWith('shes')) {
+    return t.substring(0, t.length - 2);
+  }
+  if (lower.endsWith('s')) return t.substring(0, t.length - 1);
+  return t;
+}
+
+/// "a/an <noun>" with a naive article for the empty-state supporting line.
+String _indefinite(String noun) {
+  final n = noun.trim().toLowerCase();
+  final article = n.isNotEmpty && 'aeiou'.contains(n[0]) ? 'an' : 'a';
+  return '$article $n';
+}
 
 class _HeaderRow extends StatelessWidget {
   const _HeaderRow({required this.fields});
@@ -793,29 +838,6 @@ class _CellDateField extends StatelessWidget {
   }
 }
 
-class _EmptyRow extends StatelessWidget {
-  const _EmptyRow({required this.width});
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Center(
-          child: Text(
-            'No rows yet.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Stacked summary of a single child row for narrow panes (phone /
 /// tablet-portrait). Tapping anywhere opens the per-row editor — the same
 /// dialog/sheet the grid's trailing "•••" button uses — so every field stays
@@ -898,7 +920,7 @@ class _RowCard extends StatelessWidget {
               if (amountVal is num) ...[
                 const SizedBox(width: 8),
                 Text(
-                  _fmtAmount(amountVal),
+                  _fmtAmount(amountVal, amountField?.precision),
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(fontWeight: FontWeight.w700),
                 ),
@@ -920,25 +942,30 @@ class _FooterBar extends StatelessWidget {
   const _FooterBar({
     required this.rowCount,
     required this.readOnly,
+    required this.addLabel,
     required this.onAdd,
   });
   final int rowCount;
   final bool readOnly;
+  final String addLabel;
   final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // When the table is empty the business empty-state already shows the add
+    // call-to-action, so the footer only offers "Add <thing>" for adding more.
+    final showAdd = !readOnly && rowCount > 0;
     return Container(
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
         children: [
-          if (!readOnly)
+          if (showAdd)
             TextButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add_circle_outline, size: 16),
-              label: const Text('Add Row'),
+              label: Text(addLabel),
             ),
           const Spacer(),
           Text(
