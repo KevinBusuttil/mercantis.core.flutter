@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/core_providers.dart';
+import '../theme/atlas/atlas.dart';
 import 'record_tree_view.dart';
 import 'record_view_mode.dart';
 
@@ -75,10 +76,11 @@ class _GenericListViewState extends ConsumerState<GenericListView> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: AtlasFloatingActionButton(
         onPressed: () =>
             GoRouter.of(context).go('/form/${widget.docTypeName}/new'),
-        child: const Icon(Icons.add),
+        icon: Icons.add,
+        tooltip: 'New',
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
