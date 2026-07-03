@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../providers/core_providers.dart';
-import '../shell/breakpoints.dart';
 import '../theme/atlas/atlas.dart';
 import '../views/form_field_support.dart';
 
@@ -279,41 +278,26 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
   }
 
   Future<void> _openPicker() async {
-    final bp = Breakpoint.of(context);
-    final picked = await (bp.isPhone
-        ? showModalBottomSheet<String?>(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            builder: (ctx) => _LinkPickerSheet(
-              targetDocType: widget.targetDocType,
-              currentValue: widget.value,
-              searchProvider: widget.searchProvider,
-              targetDocTypeResolver: widget.targetDocTypeResolver,
-              enableInlineCreate: widget.enableInlineCreate,
-            ),
-          )
-        : showDialog<String?>(
-            context: context,
-            builder: (ctx) => Dialog(
-              clipBehavior: Clip.antiAlias,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minWidth: 460,
-                  minHeight: 380,
-                  maxWidth: 640,
-                  maxHeight: 560,
-                ),
-                child: _LinkPickerSheet(
-                  targetDocType: widget.targetDocType,
-                  currentValue: widget.value,
-                  searchProvider: widget.searchProvider,
-                  targetDocTypeResolver: widget.targetDocTypeResolver,
-                  enableInlineCreate: widget.enableInlineCreate,
-                ),
-              ),
-            ),
-          ));
+    // The picker owns its own scroll (fixed search header + results list), so
+    // it opts out of the draggable/handle behaviour and keeps its fixed modal
+    // on phone; the shared launcher still unifies the phone-vs-dialog decision.
+    final picked = await showAtlasBottomSheet<String?>(
+      context,
+      draggable: false,
+      dialogConstraints: const BoxConstraints(
+        minWidth: 460,
+        minHeight: 380,
+        maxWidth: 640,
+        maxHeight: 560,
+      ),
+      builder: (ctx, _) => _LinkPickerSheet(
+        targetDocType: widget.targetDocType,
+        currentValue: widget.value,
+        searchProvider: widget.searchProvider,
+        targetDocTypeResolver: widget.targetDocTypeResolver,
+        enableInlineCreate: widget.enableInlineCreate,
+      ),
+    );
     if (!mounted) return;
     if (picked == _kClearSentinel) {
       widget.onChanged(null);
