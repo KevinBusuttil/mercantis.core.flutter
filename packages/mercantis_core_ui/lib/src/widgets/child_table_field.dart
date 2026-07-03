@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../shell/breakpoints.dart';
-import '../theme/atlas/atlas_field_row.dart';
+import '../theme/atlas/atlas.dart';
 import 'link_picker_field.dart';
 
 /// Shared across rows so the expression parse-cache is reused. Evaluates
