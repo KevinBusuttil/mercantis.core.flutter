@@ -1109,50 +1109,62 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
     );
   }
 
+  /// Renders one field of the row editor. Delegates to the public Atlas row
+  /// components (extracted in Phase 1) so the editor reads as one language with
+  /// the parent form — while preserving this editor's own data conventions
+  /// (check → bool, currency → double, per-case recompute semantics) rather
+  /// than routing through FieldWidget, whose check emits an int.
   Widget _editorControl(BuildContext context, FieldDefinition f) {
     final value = _draft[f.key];
-    final decoration = InputDecoration(labelText: f.label);
     final ro = _isReadOnly(f);
+    final icon = atlasFieldIcon(f);
+    num? asNum() => value is num ? value : num.tryParse(value?.toString() ?? '');
     switch (f.type) {
       case FieldType.check:
-        return SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(f.label),
-          value: _coerceBool(value),
-          onChanged: ro ? null : (v) => _setDraft(f.key, v),
+        final on = _coerceBool(value);
+        return AtlasFieldRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
+          readOnly: ro,
+          onTap: ro ? null : () => _setDraft(f.key, !on),
+          trailing: Switch(
+            value: on,
+            onChanged: ro ? null : (v) => _setDraft(f.key, v),
+          ),
         );
       case FieldType.integer:
-        // Editable integer counts get the Atlas − / + stepper; derived /
-        // read-only integers keep the plain (re-keying) read-only field so a
-        // recomputed value still refreshes.
+        // Editable integer counts get the Atlas − / + stepper; a derived /
+        // read-only integer shows its (recomputed) value as a read-only row.
         if (!ro) {
           return AtlasQuantityStepper(
+            icon: icon,
             label: f.label,
             required: f.required,
-            value: value is num ? value : num.tryParse(value?.toString() ?? ''),
+            value: asNum(),
             min: 0,
             onChanged: (v) => _setDraft(f.key, v?.toInt()),
           );
         }
-        return TextFormField(
-          key: ValueKey('int_${f.key}_${ro ? value ?? "" : "edit"}'),
-          initialValue: value?.toString() ?? '',
-          decoration: decoration,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.end,
-          readOnly: ro,
-          onChanged: ro ? null : (s) => _setDraft(f.key, int.tryParse(s)),
+        return AtlasTextInputRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
+          readOnly: true,
+          value: value?.toString(),
+          onChanged: (_) {},
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
-        // A float that reads like a quantity (e.g. a fractional qty) also gets
-        // the stepper; money (currency) and percent stay plain numeric fields.
+        // A float that reads like a quantity (e.g. a fractional qty) gets the
+        // stepper; money / percent / derived values use the money row.
         if (!ro && f.type == FieldType.float && _looksLikeQuantity(f.key)) {
           return AtlasQuantityStepper(
+            icon: icon,
             label: f.label,
             required: f.required,
-            value: value is num ? value : num.tryParse(value?.toString() ?? ''),
+            value: asNum(),
             min: 0,
             // Honour the field's declared precision so a fractional qty isn't
             // rounded to 2dp (e.g. 0.125 at precision 3 stays 0.125).
@@ -1160,68 +1172,52 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
             onChanged: (v) => _setDraft(f.key, v?.toDouble()),
           );
         }
-        return TextFormField(
-          key: ValueKey('num_${f.key}_${ro ? value ?? "" : "edit"}'),
-          initialValue: value?.toString() ?? '',
-          decoration: decoration.copyWith(
-            suffixText: f.type == FieldType.percent ? '%' : null,
-          ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          textAlign: TextAlign.end,
+        return AtlasMoneyField(
+          icon: icon,
+          label: f.label,
+          required: f.required,
           readOnly: ro,
-          onChanged: ro ? null : (s) => _setDraft(f.key, double.tryParse(s)),
+          value: asNum(),
+          suffixText: f.type == FieldType.percent ? '%' : null,
+          onChanged: (v) => _setDraft(f.key, v?.toDouble()),
         );
       case FieldType.date:
-        return TextFormField(
-          key: ValueKey('date_${f.key}_${value ?? ""}'),
-          initialValue: value?.toString() ?? '',
-          decoration: decoration.copyWith(
-            suffixIcon: ro
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.calendar_today),
-                    onPressed: () async {
-                      final parsed = DateTime.tryParse(value ?? '');
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: parsed ?? DateTime.now(),
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        _setDraft(
-                            f.key, DateFormat('yyyy-MM-dd').format(picked));
-                      }
-                    },
-                  ),
-          ),
+        return AtlasDateFieldRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
           readOnly: ro,
-          // Manual typing assigns without a rebuild so the cursor isn't reset
-          // mid-entry; formulas are re-derived on the next edit and at Done.
-          onChanged: ro ? null : (s) => _draft[f.key] = s,
+          value: value as String?,
+          onChanged: (s) => _setDraft(f.key, s),
         );
       case FieldType.longText:
-        return TextFormField(
-          initialValue: value as String? ?? '',
-          decoration: decoration,
-          maxLines: 5,
+        return AtlasTextInputRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
           readOnly: ro,
-          onChanged: ro ? null : (s) => _draft[f.key] = s,
+          value: value as String?,
+          maxLines: 5,
+          // Text fields don't drive formulas; assign without a setState so the
+          // cursor isn't disturbed (the editor re-derives on Done).
+          onChanged: (s) => _draft[f.key] = s,
         );
       case FieldType.select:
         final opts =
             (f.options ?? '').split('\n').where((o) => o.isNotEmpty).toList();
-        return DropdownButtonFormField<String>(
-          initialValue: value as String?,
-          decoration: decoration,
-          items: opts
-              .map((o) => DropdownMenuItem(value: o, child: Text(o)))
-              .toList(),
-          onChanged: ro ? null : (v) => _setDraft(f.key, v),
+        return AtlasSelectorRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
+          readOnly: ro,
+          value: value as String?,
+          options: opts,
+          onChanged: (v) => _setDraft(f.key, v),
         );
       case FieldType.link:
       case FieldType.dynamicLink:
-        // Full picker: search + select the target record (e.g. a line's Item).
+        // Full picker (search + select the target record, e.g. a line's Item),
+        // rendered as an Atlas selector row to match the parent form.
         return LinkPickerField(
           label: f.label,
           targetDocType: f.linkDocType ?? f.options ?? '',
@@ -1231,13 +1227,17 @@ class _ChildRowEditorState extends State<_ChildRowEditor> {
           onChanged: (v) => _setDraft(f.key, v),
           searchProvider: widget.linkSearchProvider,
           targetDocTypeResolver: widget.linkTargetResolver,
+          atlas: true,
+          icon: icon,
         );
       default:
-        return TextFormField(
-          initialValue: value?.toString() ?? '',
-          decoration: decoration,
+        return AtlasTextInputRow(
+          icon: icon,
+          label: f.label,
+          required: f.required,
           readOnly: ro,
-          onChanged: ro ? null : (s) => _draft[f.key] = s,
+          value: value?.toString(),
+          onChanged: (s) => _draft[f.key] = s,
         );
     }
   }
