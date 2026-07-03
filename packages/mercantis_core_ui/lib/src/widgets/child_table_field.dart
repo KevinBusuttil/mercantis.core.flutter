@@ -912,8 +912,10 @@ class _RowCard extends StatelessWidget {
       color: hasError
           ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
           : theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
+      // Material forbids `borderRadius` together with `shape`; the error shape
+      // carries its own radius, so only one is ever set.
+      borderRadius: hasError ? null : BorderRadius.circular(10),
       shape: hasError
           ? RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
