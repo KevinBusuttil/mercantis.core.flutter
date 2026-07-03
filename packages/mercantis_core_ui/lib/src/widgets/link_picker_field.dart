@@ -244,7 +244,7 @@ class _LinkPickerFieldState extends ConsumerState<LinkPickerField> {
                     BoxConstraints(minWidth: 32, minHeight: 32),
               )
             : InputDecoration(
-                label: _RequiredAwareLabel(
+                label: AtlasLabel.inheritStyle(
                   label: widget.label,
                   required: widget.required,
                 ),
@@ -865,7 +865,7 @@ class _InlineCreateSheetState extends ConsumerState<_InlineCreateSheet> {
           _errors.remove(f.key);
         });
     final decoration = InputDecoration(
-      label: _RequiredAwareLabel(label: f.label, required: f.required),
+      label: AtlasLabel.inheritStyle(label: f.label, required: f.required),
       hintText: f.placeholder,
       errorText: _errors[f.key],
     );
@@ -874,7 +874,7 @@ class _InlineCreateSheetState extends ConsumerState<_InlineCreateSheet> {
       case FieldType.check:
         return SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: _RequiredAwareLabel(label: f.label, required: f.required),
+          title: AtlasLabel.inheritStyle(label: f.label, required: f.required),
           value: (_values[f.key] as int? ?? 0) == 1,
           onChanged: (v) => set(v ? 1 : 0),
         );
@@ -948,32 +948,3 @@ class _InlineCreateSheetState extends ConsumerState<_InlineCreateSheet> {
   }
 }
 
-/// Local copy of the required-label widget kept private to this file
-/// so the picker doesn't depend on `generic_form_view.dart` internals.
-class _RequiredAwareLabel extends StatelessWidget {
-  const _RequiredAwareLabel({required this.label, required this.required});
-  final String label;
-  final bool required;
-
-  @override
-  Widget build(BuildContext context) {
-    final base = DefaultTextStyle.of(context).style;
-    final asterisk = base.copyWith(
-      color: Theme.of(context).colorScheme.error,
-      fontWeight: FontWeight.w600,
-    );
-    return Semantics(
-      label: required ? '$label, required' : label,
-      excludeSemantics: true,
-      child: RichText(
-        text: TextSpan(
-          style: base,
-          children: [
-            TextSpan(text: label),
-            if (required) TextSpan(text: ' *', style: asterisk),
-          ],
-        ),
-      ),
-    );
-  }
-}
