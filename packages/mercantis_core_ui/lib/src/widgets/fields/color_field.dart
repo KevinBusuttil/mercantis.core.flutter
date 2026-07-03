@@ -10,6 +10,7 @@ class ColorField extends StatelessWidget {
     required this.value,
     required this.readOnly,
     required this.onChanged,
+    this.embedded = false,
   });
 
   final String label;
@@ -17,6 +18,9 @@ class ColorField extends StatelessWidget {
   final String? value;
   final bool readOnly;
   final ValueChanged<dynamic> onChanged;
+
+  /// Drops the outlined box + floating label so an Atlas field row can wrap it.
+  final bool embedded;
 
   static const _presets = <int>[
     0xFFEF5350, 0xFFEC407A, 0xFFAB47BC, 0xFF7E57C2, 0xFF5C6BC0,
@@ -29,37 +33,39 @@ class ColorField extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = parseHex(value);
     final theme = Theme.of(context);
+    final content = InkWell(
+      onTap: readOnly ? null : () => _pick(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color ?? theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              value?.isNotEmpty == true ? value!.toUpperCase() : 'No colour',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const Spacer(),
+            if (!readOnly) const Icon(Icons.colorize, size: 18),
+          ],
+        ),
+      ),
+    );
+    if (embedded) return content;
     return InputDecorator(
       decoration: InputDecoration(
         label: Text(required ? '$label *' : label),
         border: const OutlineInputBorder(),
       ),
-      child: InkWell(
-        onTap: readOnly ? null : () => _pick(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: color ?? theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                value?.isNotEmpty == true ? value!.toUpperCase() : 'No colour',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const Spacer(),
-              if (!readOnly) const Icon(Icons.colorize, size: 18),
-            ],
-          ),
-        ),
-      ),
+      child: content,
     );
   }
 

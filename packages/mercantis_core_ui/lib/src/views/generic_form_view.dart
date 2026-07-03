@@ -929,6 +929,20 @@ class FieldWidget extends StatelessWidget {
         : s;
   }
 
+  /// Wraps a composite scalar editor (rating, duration, code, colour) — rendered
+  /// in its [embedded] labelless form — inside an Atlas field row so it reads as
+  /// one language with the rest of the form. Inside a child-table cell the
+  /// caller keeps the widget's own outlined rendering instead.
+  Widget _atlasScalarRow(Widget embeddedChild) {
+    return AtlasFieldRow(
+      icon: atlasFieldIcon(field),
+      label: _label,
+      required: field.required,
+      readOnly: readOnly,
+      child: embeddedChild,
+    );
+  }
+
   /// An inline single-line text row (used for text / smallText / data and the
   /// default fallback). Inside a dense child-table cell it keeps the outlined
   /// editor; on a form it delegates to the public [AtlasTextInputRow].
@@ -1170,13 +1184,23 @@ class FieldWidget extends StatelessWidget {
       case FieldType.text:
         return _atlasTextRow(context);
       case FieldType.color:
-        return ColorField(
+        if (ChildTableContext.isInline(context)) {
+          return ColorField(
+            label: _label,
+            required: field.required,
+            value: value as String?,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
+        return _atlasScalarRow(ColorField(
           label: _label,
           required: field.required,
           value: value as String?,
           readOnly: readOnly,
           onChanged: onChanged,
-        );
+          embedded: true,
+        ));
       case FieldType.signature:
         return SignatureField(
           label: _label,
@@ -1194,29 +1218,59 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.rating:
-        return RatingField(
+        if (ChildTableContext.isInline(context)) {
+          return RatingField(
+            label: _label,
+            required: field.required,
+            value: value,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
+        return _atlasScalarRow(RatingField(
           label: _label,
           required: field.required,
           value: value,
           readOnly: readOnly,
           onChanged: onChanged,
-        );
+          embedded: true,
+        ));
       case FieldType.duration:
-        return DurationField(
+        if (ChildTableContext.isInline(context)) {
+          return DurationField(
+            label: _label,
+            required: field.required,
+            value: value,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
+        return _atlasScalarRow(DurationField(
           label: _label,
           required: field.required,
           value: value,
           readOnly: readOnly,
           onChanged: onChanged,
-        );
+          embedded: true,
+        ));
       case FieldType.code:
-        return CodeField(
+        if (ChildTableContext.isInline(context)) {
+          return CodeField(
+            label: _label,
+            required: field.required,
+            value: value as String?,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
+        return _atlasScalarRow(CodeField(
           label: _label,
           required: field.required,
           value: value as String?,
           readOnly: readOnly,
           onChanged: onChanged,
-        );
+          embedded: true,
+        ));
       case FieldType.attach:
         return AttachmentField(
           label: _label,
