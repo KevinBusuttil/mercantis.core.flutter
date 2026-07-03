@@ -77,6 +77,19 @@ void main() {
     expect(find.text('read me'), findsOneWidget);
   });
 
+  testWidgets('AtlasTextInputRow renders prefix/suffix affixes in the editor',
+      (tester) async {
+    await tester.pumpWidget(wrap(const AtlasTextInputRow(
+      label: 'Weight',
+      value: '5',
+      suffixText: 'kg',
+      prefixText: '≈',
+      onChanged: _noop,
+    )));
+    expect(find.text('kg'), findsOneWidget);
+    expect(find.text('≈'), findsOneWidget);
+  });
+
   testWidgets('AtlasMoneyField shows a prefix and emits a num', (tester) async {
     num? emitted;
     await tester.pumpWidget(wrap(AtlasMoneyField(

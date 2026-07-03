@@ -77,7 +77,12 @@ class AtlasTextInputRow extends StatelessWidget {
       child: !readOnly
           ? AtlasTextFieldEditor(
               value: v,
-              decoration: atlasInlineDecoration(context, hintText: placeholder),
+              decoration: atlasInlineDecoration(
+                context,
+                hintText: placeholder,
+                prefixText: prefixText,
+                suffixText: suffixText,
+              ),
               keyboardType: keyboardType,
               maxLines: maxLines,
               style: atlasValueTextStyle(context),
