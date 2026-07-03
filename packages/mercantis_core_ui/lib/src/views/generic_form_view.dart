@@ -7,7 +7,6 @@ import '../providers/core_providers.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
 import '../theme/atlas/atlas.dart';
-import '../theme/tokens/spacing.dart';
 import '../widgets/child_table_field.dart';
 import '../widgets/fields/attachment_field.dart';
 import '../widgets/fields/barcode_field.dart';
@@ -620,7 +619,7 @@ class _MetaForm extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final g in bodyGroups) ...[
-                _SectionCard(
+                AtlasSectionCard(
                   name: g.name,
                   containsTable: _containsTable(g),
                   child: columnsFor(g) >= 2
@@ -733,62 +732,6 @@ class _MetaForm extends StatelessWidget {
   List<Map<String, dynamic>> _rowsFor(String key) => childRowsAsMaps(doc, key);
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.name,
-    required this.containsTable,
-    required this.child,
-  });
-  final String name;
-  final bool containsTable;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // With no muted backdrop behind us (the sheet's bare surface shows
-    // through, matching Swift PR #124's HIG-aligned pattern), the stroke
-    // alone has to carry the visual grouping. Switched to `outline`
-    // (the darker stroke role) from the faint `outlineVariant` so cards
-    // still read as discrete groups — Swift bumped its equivalent
-    // 0.8 → 1.0 opacity for the same reason.
-    final cardShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-      side: BorderSide(
-        color: theme.colorScheme.outline.withValues(alpha: 0.6),
-      ),
-    );
-    final showTitle = name.trim().isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (showTitle)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-            child: Text(
-              name.toUpperCase(),
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        Material(
-          color: theme.colorScheme.surface,
-          shape: cardShape,
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: containsTable
-                ? const EdgeInsets.all(4)
-                : const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: child,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _LabelledField extends StatelessWidget {
   const _LabelledField({
@@ -979,35 +922,6 @@ class FieldWidget extends StatelessWidget {
     );
   }
 
-  /// Borderless decoration so an inline editor reads as the row's *value*
-  /// rather than an outlined box — the Atlas row already supplies the card,
-  /// label and padding.
-  InputDecoration _atlasInline(
-    BuildContext context, {
-    String? hintText,
-    String? prefixText,
-    String? suffixText,
-  }) {
-    return InputDecoration(
-      isCollapsed: true,
-      border: InputBorder.none,
-      contentPadding: EdgeInsets.zero,
-      hintText: hintText,
-      hintStyle: TextStyle(
-        color:
-            Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-        fontWeight: FontWeight.w500,
-      ),
-      prefixText: prefixText,
-      suffixText: suffixText,
-    );
-  }
-
-  TextStyle? _atlasValueStyle(BuildContext context) => Theme.of(context)
-      .textTheme
-      .titleMedium
-      ?.copyWith(fontWeight: FontWeight.w600);
-
   String _atlasMoney(num? v) {
     final s = (v ?? 0).toDouble().toStringAsFixed(2);
     return (currencySymbol != null && currencySymbol!.isNotEmpty)
@@ -1016,33 +930,25 @@ class FieldWidget extends StatelessWidget {
   }
 
   /// An inline single-line text row (used for text / smallText / data and the
-  /// default fallback). Keeps the outlined editor inside a dense child-table
-  /// cell.
+  /// default fallback). Inside a dense child-table cell it keeps the outlined
+  /// editor; on a form it delegates to the public [AtlasTextInputRow].
   Widget _atlasTextRow(BuildContext context) {
     if (ChildTableContext.isInline(context)) {
-      return _TextFieldEditor(
+      return AtlasTextFieldEditor(
         value: value?.toString() ?? '',
         decoration: _decoration(context),
         readOnly: readOnly,
         onChanged: onChanged,
       );
     }
-    return AtlasFieldRow(
+    return AtlasTextInputRow(
       icon: atlasFieldIcon(field),
       label: _label,
       required: field.required,
       readOnly: readOnly,
-      value: readOnly ? value?.toString() : null,
-      child: readOnly
-          ? null
-          : _TextFieldEditor(
-              value: value?.toString() ?? '',
-              decoration: _atlasInline(context,
-                  hintText: field.placeholder ?? 'Enter ${_label.toLowerCase()}'),
-              style: _atlasValueStyle(context),
-              readOnly: readOnly,
-              onChanged: onChanged,
-            ),
+      value: value?.toString(),
+      placeholder: field.placeholder ?? 'Enter ${_label.toLowerCase()}',
+      onChanged: onChanged,
     );
   }
 
@@ -1072,7 +978,7 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.integer:
         if (ChildTableContext.isInline(context)) {
-          return _TextFieldEditor(
+          return AtlasTextFieldEditor(
             value: (value as int?)?.toString() ?? '',
             decoration: _decoration(context),
             keyboardType: TextInputType.number,
@@ -1080,28 +986,20 @@ class FieldWidget extends StatelessWidget {
             onChanged: (v) => onChanged(int.tryParse(v)),
           );
         }
-        return AtlasFieldRow(
+        return AtlasTextInputRow(
           icon: atlasFieldIcon(field),
           label: _label,
           required: field.required,
           readOnly: readOnly,
-          value: readOnly ? (value as int?)?.toString() : null,
-          child: readOnly
-              ? null
-              : _TextFieldEditor(
-                  value: (value as int?)?.toString() ?? '',
-                  decoration: _atlasInline(context),
-                  keyboardType: TextInputType.number,
-                  style: _atlasValueStyle(context),
-                  readOnly: readOnly,
-                  onChanged: (v) => onChanged(int.tryParse(v)),
-                ),
+          value: (value as int?)?.toString(),
+          keyboardType: TextInputType.number,
+          onChanged: (v) => onChanged(int.tryParse(v)),
         );
       case FieldType.float:
       case FieldType.currency:
       case FieldType.percent:
         if (ChildTableContext.isInline(context)) {
-          return _TextFieldEditor(
+          return AtlasTextFieldEditor(
             value: (value as num?)?.toString() ?? '',
             decoration: _decoration(
               context,
@@ -1130,28 +1028,15 @@ class FieldWidget extends StatelessWidget {
             emphasize: k.contains('grand') || _label.toLowerCase().contains('grand'),
           );
         }
-        return AtlasFieldRow(
+        return AtlasMoneyField(
           icon: atlasFieldIcon(field),
           label: _label,
           required: field.required,
           readOnly: readOnly,
-          value: readOnly ? numVal?.toString() : null,
-          child: readOnly
-              ? null
-              : _TextFieldEditor(
-                  value: numVal?.toString() ?? '',
-                  decoration: _atlasInline(
-                    context,
-                    prefixText:
-                        field.type == FieldType.currency ? currencySymbol : null,
-                    suffixText: field.type == FieldType.percent ? '%' : null,
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  style: _atlasValueStyle(context),
-                  readOnly: readOnly,
-                  onChanged: (v) => onChanged(double.tryParse(v)),
-                ),
+          value: numVal,
+          prefixText: field.type == FieldType.currency ? currencySymbol : null,
+          suffixText: field.type == FieldType.percent ? '%' : null,
+          onChanged: onChanged,
         );
       case FieldType.select:
         final opts = (field.options ?? '')
@@ -1161,11 +1046,13 @@ class FieldWidget extends StatelessWidget {
         // Atlas selector row on a form; the outlined dropdown only inside a
         // child-table cell (where the column header carries the label).
         if (!ChildTableContext.isInline(context)) {
-          return _AtlasSelectRow(
-            field: field,
+          return AtlasSelectorRow(
+            icon: atlasFieldIcon(field),
+            label: _label,
+            required: field.required,
+            readOnly: readOnly,
             value: value as String?,
             options: opts,
-            readOnly: readOnly,
             onChanged: onChanged,
           );
         }
@@ -1179,8 +1066,10 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.date:
         if (!ChildTableContext.isInline(context)) {
-          return _AtlasDateRow(
-            field: field,
+          return AtlasDateFieldRow(
+            icon: atlasFieldIcon(field),
+            label: _label,
+            required: field.required,
             value: value as String?,
             readOnly: readOnly,
             onChanged: onChanged,
@@ -1194,6 +1083,16 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.time:
+        if (!ChildTableContext.isInline(context)) {
+          return AtlasTimeFieldRow(
+            icon: atlasFieldIcon(field),
+            label: _label,
+            required: field.required,
+            value: value as String?,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
         return _TimeField(
           label: _label,
           required: field.required,
@@ -1202,6 +1101,16 @@ class FieldWidget extends StatelessWidget {
           onChanged: onChanged,
         );
       case FieldType.dateTime:
+        if (!ChildTableContext.isInline(context)) {
+          return AtlasDateTimeFieldRow(
+            icon: atlasFieldIcon(field),
+            label: _label,
+            required: field.required,
+            value: value as String?,
+            readOnly: readOnly,
+            onChanged: onChanged,
+          );
+        }
         return _DateTimeField(
           label: _label,
           required: field.required,
@@ -1237,7 +1146,7 @@ class FieldWidget extends StatelessWidget {
         );
       case FieldType.longText:
         if (ChildTableContext.isInline(context)) {
-          return _TextFieldEditor(
+          return AtlasTextFieldEditor(
             value: value as String? ?? '',
             decoration: _decoration(context),
             maxLines: 5,
@@ -1245,26 +1154,17 @@ class FieldWidget extends StatelessWidget {
             onChanged: onChanged,
           );
         }
-        return AtlasFieldRow(
+        // The Atlas text row preserves line breaks when read-only (a multi-line
+        // child Text) and shows a 5-line editor otherwise.
+        return AtlasTextInputRow(
           icon: atlasFieldIcon(field),
           label: _label,
           required: field.required,
           readOnly: readOnly,
-          // Read-only long text keeps its line breaks — render the full value
-          // as a multi-line child rather than the row's single-line value slot.
-          child: readOnly
-              ? Text(
-                  value as String? ?? '',
-                  style: _atlasValueStyle(context),
-                )
-              : _TextFieldEditor(
-                  value: value as String? ?? '',
-                  decoration: _atlasInline(context, hintText: field.placeholder),
-                  maxLines: 5,
-                  style: _atlasValueStyle(context),
-                  readOnly: readOnly,
-                  onChanged: onChanged,
-                ),
+          value: value as String?,
+          placeholder: field.placeholder,
+          maxLines: 5,
+          onChanged: onChanged,
         );
       case FieldType.smallText:
       case FieldType.text:
@@ -1383,187 +1283,6 @@ class _RequiredAwareLabel extends StatelessWidget {
   }
 }
 
-/// Atlas selector row for a `date` field — shows the formatted value (or a
-/// "Choose <label>" placeholder) and opens a date picker on tap.
-class _AtlasDateRow extends StatelessWidget {
-  const _AtlasDateRow({
-    required this.field,
-    required this.value,
-    required this.readOnly,
-    required this.onChanged,
-  });
-  final ResolvedFieldDefinition field;
-  final String? value;
-  final bool readOnly;
-  final ValueChanged<dynamic> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final parsed = DateTime.tryParse(value ?? '');
-    final display =
-        parsed != null ? DateFormat('d MMM yyyy').format(parsed) : (value ?? '');
-    return AtlasFieldRow(
-      icon: atlasFieldIcon(field),
-      label: field.label,
-      required: field.required,
-      readOnly: readOnly,
-      value: display,
-      placeholder: 'Choose ${field.label}',
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: parsed ?? DateTime.now(),
-          firstDate: DateTime(1900),
-          lastDate: DateTime(2100),
-        );
-        if (picked != null) {
-          onChanged(DateFormat('yyyy-MM-dd').format(picked));
-        }
-      },
-    );
-  }
-}
-
-/// Atlas selector row for a `select` field — shows the chosen option (or a
-/// "Select <label>" placeholder) and opens an option sheet on tap.
-class _AtlasSelectRow extends StatelessWidget {
-  const _AtlasSelectRow({
-    required this.field,
-    required this.value,
-    required this.options,
-    required this.readOnly,
-    required this.onChanged,
-  });
-  final ResolvedFieldDefinition field;
-  final String? value;
-  final List<String> options;
-  final bool readOnly;
-  final ValueChanged<dynamic> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return AtlasFieldRow(
-      icon: atlasFieldIcon(field),
-      label: field.label,
-      required: field.required,
-      readOnly: readOnly || options.isEmpty,
-      value: value,
-      placeholder: 'Select ${field.label}',
-      onTap: () async {
-        final picked = await showModalBottomSheet<String>(
-          context: context,
-          showDragHandle: true,
-          builder: (_) =>
-              _OptionSheet(title: field.label, options: options, selected: value),
-        );
-        if (picked != null) onChanged(picked);
-      },
-    );
-  }
-}
-
-/// Bottom-sheet list of [options] for an Atlas select row; pops the chosen
-/// value on tap.
-class _OptionSheet extends StatelessWidget {
-  const _OptionSheet({
-    required this.title,
-    required this.options,
-    required this.selected,
-  });
-  final String title;
-  final List<String> options;
-  final String? selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(MercantisSpacing.lg, 0,
-                MercantisSpacing.lg, MercantisSpacing.sm),
-            child: Text(title, style: theme.textTheme.titleSmall),
-          ),
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final o in options)
-                  ListTile(
-                    title: Text(o),
-                    trailing: o == selected
-                        ? Icon(Icons.check, color: theme.colorScheme.primary)
-                        : null,
-                    onTap: () => Navigator.of(context).pop(o),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TextFieldEditor extends StatefulWidget {
-  const _TextFieldEditor({
-    required this.value,
-    required this.decoration,
-    required this.readOnly,
-    required this.onChanged,
-    this.keyboardType,
-    this.maxLines = 1,
-    this.style,
-  });
-  final String value;
-  final InputDecoration decoration;
-  final bool readOnly;
-  final ValueChanged<String> onChanged;
-  final TextInputType? keyboardType;
-  final int maxLines;
-  final TextStyle? style;
-
-  @override
-  State<_TextFieldEditor> createState() => _TextFieldEditorState();
-}
-
-class _TextFieldEditorState extends State<_TextFieldEditor> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.value);
-
-  @override
-  void didUpdateWidget(_TextFieldEditor old) {
-    super.didUpdateWidget(old);
-    if (widget.value != _controller.text) {
-      _controller.value = TextEditingValue(
-        text: widget.value,
-        selection: TextSelection.collapsed(offset: widget.value.length),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: _controller,
-      decoration: widget.decoration,
-      keyboardType: widget.keyboardType,
-      maxLines: widget.maxLines,
-      style: widget.style,
-      readOnly: widget.readOnly,
-      onChanged: widget.readOnly ? null : widget.onChanged,
-    );
-  }
-}
 
 class _DateField extends StatelessWidget {
   const _DateField({
