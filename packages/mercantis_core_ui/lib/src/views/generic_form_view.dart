@@ -625,7 +625,7 @@ class _MetaForm extends StatelessWidget {
                   child: columnsFor(g) >= 2
                       ? _TwoColumnLayout(
                           rows: _paired(g.fields),
-                          buildField: (f, stacked) => _buildField(f, stacked),
+                          buildField: (f) => _buildField(f),
                         )
                       : Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -633,7 +633,7 @@ class _MetaForm extends StatelessWidget {
                             for (final f in g.fields)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
-                                child: _buildField(f, _usesStackedLayout(f)),
+                                child: _buildField(f),
                               ),
                           ],
                         ),
@@ -661,7 +661,7 @@ class _MetaForm extends StatelessWidget {
               child: AtlasSummaryCard(
                 title: summaryTitle,
                 children: [
-                  for (final f in summaryFields) _buildField(f, false),
+                  for (final f in summaryFields) _buildField(f),
                 ],
               ),
             ),
@@ -673,8 +673,8 @@ class _MetaForm extends StatelessWidget {
 
   /// Wraps the control with an inline footnote (help text + validation error)
   /// when either is present — port of Swift's `fieldFootnotes`.
-  Widget _buildField(ResolvedFieldDefinition f, bool stacked) {
-    final control = _buildControl(f, stacked);
+  Widget _buildField(ResolvedFieldDefinition f) {
+    final control = _buildControl(f);
     final help = f.helpText?.trim();
     final error = errors[f.key]?.trim();
     final hasFootnote =
@@ -689,7 +689,7 @@ class _MetaForm extends StatelessWidget {
     );
   }
 
-  Widget _buildControl(ResolvedFieldDefinition f, bool stacked) {
+  Widget _buildControl(ResolvedFieldDefinition f) {
     final isTable =
         f.type == FieldType.table || f.type == FieldType.tableMultiSelect;
     if (isTable) {
@@ -774,7 +774,7 @@ class _TwoColumnLayout extends StatelessWidget {
     required this.buildField,
   });
   final List<_PairedRow> rows;
-  final Widget Function(ResolvedFieldDefinition field, bool stacked) buildField;
+  final Widget Function(ResolvedFieldDefinition field) buildField;
 
   @override
   Widget build(BuildContext context) {
@@ -788,16 +788,16 @@ class _TwoColumnLayout extends StatelessWidget {
               _Pair(:final left, :final right) => Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: buildField(left, true)),
+                    Expanded(child: buildField(left)),
                     const SizedBox(width: 20),
                     Expanded(
                       child: right == null
                           ? const SizedBox.shrink()
-                          : buildField(right, true),
+                          : buildField(right),
                     ),
                   ],
                 ),
-              _Full(:final field) => buildField(field, true),
+              _Full(:final field) => buildField(field),
             },
           ),
       ],
@@ -901,7 +901,7 @@ class FieldWidget extends StatelessWidget {
     return InputDecoration(
       label: inline
           ? null
-          : _RequiredAwareLabel(label: _label, required: field.required),
+          : AtlasLabel.inheritStyle(label: _label, required: field.required),
       // Explicit placeholder wins; otherwise inline cells fall back to the
       // field label as ghost text (the column header already names them).
       hintText: hintText ?? field.placeholder ?? (inline ? _label : null),
@@ -915,7 +915,7 @@ class FieldWidget extends StatelessWidget {
   /// Inline label widget for non-`InputDecoration` controls (heading,
   /// checkbox, etc.) — same red-asterisk treatment.
   Widget _inlineLabel(BuildContext context, {TextStyle? style}) {
-    return _RequiredAwareLabel(
+    return AtlasLabel.inheritStyle(
       label: _label,
       required: field.required,
       style: style,
@@ -1248,41 +1248,6 @@ class FieldWidget extends StatelessWidget {
   }
 }
 
-/// Field label that appends a red asterisk when the field is required.
-///
-/// Hides the asterisk from accessibility (a separate semantic label
-/// announces the field as "<label>, required") so screen readers don't
-/// hear a punctuation character.
-class _RequiredAwareLabel extends StatelessWidget {
-  const _RequiredAwareLabel({
-    required this.label,
-    required this.required,
-    this.style,
-  });
-  final String label;
-  final bool required;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    final base = DefaultTextStyle.of(context).style.merge(style);
-    final asteriskStyle = base.copyWith(
-      color: Theme.of(context).colorScheme.error,
-      fontWeight: FontWeight.w600,
-    );
-    return Semantics(
-      label: required ? '$label, required' : label,
-      excludeSemantics: true,
-      child: RichText(
-        text: TextSpan(style: base, children: [
-          TextSpan(text: label),
-          if (required) TextSpan(text: ' *', style: asteriskStyle),
-        ]),
-      ),
-    );
-  }
-}
-
 
 class _DateField extends StatelessWidget {
   const _DateField({
@@ -1307,7 +1272,7 @@ class _DateField extends StatelessWidget {
       decoration: InputDecoration(
         label: inline
             ? null
-            : _RequiredAwareLabel(label: label, required: required),
+            : AtlasLabel.inheritStyle(label: label, required: required),
         hintText: inline ? label : null,
         isDense: inline,
         suffixIcon: readOnly
@@ -1369,7 +1334,7 @@ class _TimeField extends StatelessWidget {
       key: ValueKey('time_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
-        label: inline ? null : _RequiredAwareLabel(label: label, required: required),
+        label: inline ? null : AtlasLabel.inheritStyle(label: label, required: required),
         hintText: inline ? label : null,
         isDense: inline,
         suffixIcon: readOnly
@@ -1410,7 +1375,7 @@ class _DateTimeField extends StatelessWidget {
       key: ValueKey('datetime_$value'),
       initialValue: value ?? '',
       decoration: InputDecoration(
-        label: inline ? null : _RequiredAwareLabel(label: label, required: required),
+        label: inline ? null : AtlasLabel.inheritStyle(label: label, required: required),
         hintText: inline ? label : null,
         isDense: inline,
         suffixIcon: readOnly
