@@ -77,22 +77,56 @@ class MercantisTheme {
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
+      // Atlas nav language: a calm primary-tinted indicator pill with the
+      // selected icon/label in the primary colour — the same treatment the
+      // expanded sidebar uses — so the bottom-nav, rail and sidebar read as
+      // one system rather than three different M3 defaults.
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: cs.surface,
-        indicatorColor: cs.primaryContainer,
-        selectedIconTheme: IconThemeData(color: cs.onPrimaryContainer),
+        indicatorColor: cs.primary.withValues(alpha: 0.12),
+        selectedIconTheme: IconThemeData(color: cs.primary),
         unselectedIconTheme: IconThemeData(color: cs.onSurfaceVariant),
-        selectedLabelTextStyle: textTheme.labelLarge?.copyWith(color: cs.onSurface),
-        unselectedLabelTextStyle: textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),
+        selectedLabelTextStyle: textTheme.labelMedium
+            ?.copyWith(color: cs.primary, fontWeight: FontWeight.w700),
+        unselectedLabelTextStyle:
+            textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant),
         labelType: NavigationRailLabelType.all,
         useIndicator: true,
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: cs.surface,
-        indicatorColor: cs.primaryContainer,
+        indicatorColor: cs.primary.withValues(alpha: 0.12),
         height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        labelTextStyle: WidgetStateProperty.resolveWith((s) => textTheme.labelSmall),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color: states.contains(WidgetState.selected)
+                ? cs.primary
+                : cs.onSurfaceVariant,
+          ),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => (textTheme.labelSmall ?? const TextStyle()).copyWith(
+            color: states.contains(WidgetState.selected)
+                ? cs.primary
+                : cs.onSurfaceVariant,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          ),
+        ),
+      ),
+      // Tabs (record detail, reports) share the primary indicator + strong
+      // selected label so tabbed surfaces match the rest of the Atlas chrome.
+      tabBarTheme: TabBarThemeData(
+        labelColor: cs.primary,
+        unselectedLabelColor: cs.onSurfaceVariant,
+        indicatorColor: cs.primary,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: cs.outlineVariant,
+        labelStyle: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        unselectedLabelStyle:
+            textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w500),
       ),
       listTileTheme: ListTileThemeData(
         iconColor: cs.onSurfaceVariant,

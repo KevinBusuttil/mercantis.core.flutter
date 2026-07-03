@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/core_providers.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/link_picker_field.dart';
 import 'record_tree_view.dart';
 import 'record_view_mode.dart';
@@ -609,45 +610,21 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isFiltered ? Icons.search_off : Icons.inbox_outlined,
-              size: 64,
-              color: theme.colorScheme.outline,
+    // Route through the shared Atlas EmptyState so a record list's placeholder
+    // matches every other empty list/table/search in the app.
+    return EmptyState(
+      icon: isFiltered ? Icons.search_off : Icons.inbox_outlined,
+      title: isFiltered ? 'No matches' : 'No $title records yet',
+      message: isFiltered
+          ? 'Try a different search term.'
+          : 'Use the New $title button to create the first record.',
+      action: isFiltered
+          ? null
+          : FilledButton.icon(
+              onPressed: () => GoRouter.of(context).go('/form/$docTypeName/new'),
+              icon: const Icon(Icons.add),
+              label: Text('New $title'),
             ),
-            const SizedBox(height: 16),
-            Text(
-              isFiltered ? 'No matches' : 'No $title records yet',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isFiltered
-                  ? 'Try a different search term.'
-                  : 'Use the New $title button to create the first record.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (!isFiltered) ...[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () =>
-                    GoRouter.of(context).go('/form/$docTypeName/new'),
-                icon: const Icon(Icons.add),
-                label: Text('New $title'),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
