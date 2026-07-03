@@ -127,9 +127,32 @@ void main() {
     await tester.enterText(field, '1');
     await tester.pump();
 
-    // The raw text the user typed survives — it is not rewritten to "1.0".
+    // The raw text the user typed survives — it is not rewritten to "1.00".
     expect(find.text('1'), findsOneWidget);
-    expect(find.text('1.0'), findsNothing);
+    expect(find.text('1.00'), findsNothing);
+  });
+
+  testWidgets(
+      'AtlasTextFieldEditor reconciles to the external value on blur so stale '
+      'text cannot outlive editing', (tester) async {
+    // The focus guard drops external updates while typing; this pins the other
+    // half of the contract — once focus is lost the controller must snap back
+    // to the authoritative value. Here an unparsable entry is coerced to blank
+    // by the parent, so after blur the field must show blank, not the stale
+    // text that a save would never persist.
+    await tester.pumpWidget(wrap(_NormalisingEditorHarness()));
+
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.enterText(field, 'abc');
+    await tester.pump();
+    // While focused, the just-typed text is still shown (update was dropped).
+    expect(find.text('abc'), findsOneWidget);
+
+    // Blur: the controller reconciles to the parent's coerced blank value.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(find.text('abc'), findsNothing);
   });
 
   testWidgets(
@@ -178,8 +201,11 @@ class _NormalisingEditorHarnessState extends State<_NormalisingEditorHarness> {
   String _value = '';
 
   String _normalise(String raw) {
+    // Mimics a money parent: parse to a number and echo back a *reformatted*
+    // string ("1" -> "1.00"), and coerce an unparsable entry to blank — both
+    // of which diverge from the user's raw keystrokes.
     final n = num.tryParse(raw);
-    return n == null ? raw : n.toString();
+    return n == null ? '' : n.toStringAsFixed(2);
   }
 
   @override
