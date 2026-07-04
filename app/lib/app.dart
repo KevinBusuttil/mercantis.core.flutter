@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mercantis_core_ui/mercantis_core_ui.dart';
 
+import 'shell_router.dart';
+
 class MercantisCoreApp extends ConsumerWidget {
   const MercantisCoreApp({super.key});
 

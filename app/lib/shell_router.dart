@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mercantis_core_ui/mercantis_core_ui.dart';
+
 import 'navigation_shell.dart';
-import '../views/data_browser_view.dart';
-import '../views/doc_type_list_view.dart';
-import '../views/generic_list_view.dart';
-import '../views/generic_form_view.dart';
-import '../views/form_builder_view.dart';
 
 final shellRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
