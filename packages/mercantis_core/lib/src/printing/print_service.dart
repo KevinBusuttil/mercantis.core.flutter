@@ -1,4 +1,5 @@
 import '../document_engine/document.dart';
+import 'html_print_renderer.dart';
 import 'pdf_print_renderer.dart';
 import 'plain_text_print_renderer.dart';
 import 'print_format.dart';
@@ -19,9 +20,12 @@ class PrintService {
           for (final r in (renderers ?? defaultRenderers())) r.outputKind: r,
         };
 
-  /// Default renderer set: plain text + PDF.
-  static List<PrintRenderer> defaultRenderers() =>
-      const [PlainTextPrintRenderer(), PdfPrintRenderer()];
+  /// Default renderer set: plain text + PDF + HTML.
+  static List<PrintRenderer> defaultRenderers() => const [
+        PlainTextPrintRenderer(),
+        PdfPrintRenderer(),
+        HtmlPrintRenderer(),
+      ];
 
   // Registration
 
