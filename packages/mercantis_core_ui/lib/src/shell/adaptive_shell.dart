@@ -269,9 +269,15 @@ class _Brand extends StatelessWidget {
             ),
             if (extended) ...[
               const SizedBox(width: MercantisSpacing.sm),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.titleMedium,
+              // Flexible + ellipsis so a longer brand (e.g. "Neuradix Atlas")
+              // can't overflow the fixed-width brand row on the narrow rail.
+              Flexible(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ],
