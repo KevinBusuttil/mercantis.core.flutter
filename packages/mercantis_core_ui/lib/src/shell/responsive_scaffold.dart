@@ -43,9 +43,15 @@ class ResponsiveScaffold extends StatelessWidget {
     final hPadding = bp.isPhone ? MercantisSpacing.lg : MercantisSpacing.xxl;
     final vPadding = bp.isPhone ? MercantisSpacing.md : MercantisSpacing.xl;
 
-    // Fall back to a route-pop back button when nothing explicit was supplied.
+    // Fall back to a back button when nothing explicit was supplied. Scoped to
+    // *this* route via ModalRoute.impliesAppBarDismissal (what AppBar uses), not
+    // Navigator.canPop() — the latter reflects the whole stack, so a background
+    // root scaffold would wrongly imply a stale back button while a detail page
+    // is pushed above it.
+    final impliesDismissal =
+        ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
     final effectiveLeading = leading ??
-        (automaticallyImplyLeading && Navigator.of(context).canPop()
+        (automaticallyImplyLeading && impliesDismissal
             ? const BackButton()
             : null);
 

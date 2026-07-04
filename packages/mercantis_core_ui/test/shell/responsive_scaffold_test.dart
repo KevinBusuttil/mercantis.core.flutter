@@ -67,4 +67,50 @@ void main() {
     expect(find.byIcon(Icons.close), findsOneWidget);
     expect(find.byType(BackButton), findsNothing);
   });
+
+  testWidgets(
+      'a background root that rebuilds while a detail is pushed does not grow '
+      'a stale back button (route-scoped, not stack-scoped)', (tester) async {
+    final rootKey = GlobalKey<_RootState>();
+    await tester.pumpWidget(MaterialApp(home: _Root(key: rootKey)));
+    expect(find.byType(BackButton), findsNothing);
+
+    // Push a detail page, then force the (now background) root to rebuild.
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    rootKey.currentState!.rebuild();
+    await tester.pump();
+
+    // Only the pushed detail implies a back button; the root does not.
+    expect(find.byType(BackButton), findsOneWidget);
+  });
+}
+
+class _Root extends StatefulWidget {
+  const _Root({super.key});
+  @override
+  State<_Root> createState() => _RootState();
+}
+
+class _RootState extends State<_Root> {
+  int _tick = 0;
+  void rebuild() => setState(() => _tick++);
+
+  @override
+  Widget build(BuildContext context) {
+    return ResponsiveScaffold(
+      title: 'Root $_tick',
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  const ResponsiveScaffold(title: 'Detail', body: SizedBox()),
+            ),
+          ),
+          child: const Text('go'),
+        ),
+      ),
+    );
+  }
 }
