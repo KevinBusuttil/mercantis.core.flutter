@@ -20,7 +20,11 @@ class AppNavigationRegistry {
 
   final WorkspaceRegistry _registry;
 
-  GoRouter buildRouter({String? initialLocation}) {
+  GoRouter buildRouter({
+    String? initialLocation,
+    String brandLabel = 'Mercantis',
+    String brandMark = 'M',
+  }) {
     final initial = initialLocation ?? _initialLocation();
     return GoRouter(
       initialLocation: initial,
@@ -28,6 +32,8 @@ class AppNavigationRegistry {
         ShellRoute(
           builder: (context, state, child) => AdaptiveShell(
             location: state.matchedLocation,
+            brandLabel: brandLabel,
+            brandMark: brandMark,
             child: child,
           ),
           routes: [

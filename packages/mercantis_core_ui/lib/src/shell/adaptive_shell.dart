@@ -18,10 +18,19 @@ class AdaptiveShell extends ConsumerWidget {
     super.key,
     required this.child,
     required this.location,
+    this.brandLabel = 'Mercantis',
+    this.brandMark = 'M',
   });
 
   final Widget child;
   final String location;
+
+  /// Product name shown beside the mark on the extended rail / sidebar, and the
+  /// single glyph shown in the brand square. Defaults to the core studio brand;
+  /// the hub overrides these (e.g. "Neuradix Atlas" / "N") so the shell reads
+  /// the same as the rest of the app.
+  final String brandLabel;
+  final String brandMark;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,17 +60,23 @@ class AdaptiveShell extends ConsumerWidget {
               visible: visible,
               selectedIndex: selected,
               extended: false,
+              brandLabel: brandLabel,
+              brandMark: brandMark,
               child: child,
             ),
           Breakpoint.medium => _RailShell(
               visible: visible,
               selectedIndex: selected,
               extended: true,
+              brandLabel: brandLabel,
+              brandMark: brandMark,
               child: child,
             ),
           Breakpoint.expanded => _SidebarShell(
               visible: visible,
               selectedIndex: selected,
+              brandLabel: brandLabel,
+              brandMark: brandMark,
               child: child,
             ),
         },
@@ -173,12 +188,16 @@ class _RailShell extends StatelessWidget {
     required this.visible,
     required this.selectedIndex,
     required this.extended,
+    required this.brandLabel,
+    required this.brandMark,
     required this.child,
   });
 
   final List<WorkspaceDescriptor> visible;
   final int selectedIndex;
   final bool extended;
+  final String brandLabel;
+  final String brandMark;
   final Widget child;
 
   @override
@@ -187,7 +206,7 @@ class _RailShell extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          _Brand(extended: extended),
+          _Brand(extended: extended, label: brandLabel, mark: brandMark),
           AtlasNavigationRail(
             extended: extended,
             selectedIndex: selectedIndex,
@@ -215,8 +234,14 @@ class _RailShell extends StatelessWidget {
 }
 
 class _Brand extends StatelessWidget {
-  const _Brand({required this.extended});
+  const _Brand({
+    required this.extended,
+    this.label = 'Mercantis',
+    this.mark = 'M',
+  });
   final bool extended;
+  final String label;
+  final String mark;
 
   @override
   Widget build(BuildContext context) {
@@ -235,18 +260,24 @@ class _Brand extends StatelessWidget {
                 borderRadius: MercantisRadius.rSm,
               ),
               alignment: Alignment.center,
-              child: const Text(
-                'M',
-                style: TextStyle(
+              child: Text(
+                mark,
+                style: const TextStyle(
                   color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16,
                 ),
               ),
             ),
             if (extended) ...[
               const SizedBox(width: MercantisSpacing.sm),
-              Text(
-                'Mercantis',
-                style: Theme.of(context).textTheme.titleMedium,
+              // Flexible + ellipsis so a longer brand (e.g. "Neuradix Atlas")
+              // can't overflow the fixed-width brand row on the narrow rail.
+              Flexible(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ],
@@ -304,11 +335,15 @@ class _SidebarShell extends StatelessWidget {
   const _SidebarShell({
     required this.visible,
     required this.selectedIndex,
+    required this.brandLabel,
+    required this.brandMark,
     required this.child,
   });
 
   final List<WorkspaceDescriptor> visible;
   final int selectedIndex;
+  final String brandLabel;
+  final String brandMark;
   final Widget child;
 
   @override
@@ -324,7 +359,7 @@ class _SidebarShell extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _Brand(extended: true),
+                _Brand(extended: true, label: brandLabel, mark: brandMark),
                 const SizedBox(height: MercantisSpacing.lg),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: MercantisSpacing.lg),

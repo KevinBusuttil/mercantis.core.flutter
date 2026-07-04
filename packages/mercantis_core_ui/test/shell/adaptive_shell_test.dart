@@ -19,7 +19,11 @@ const _testWorkspaces = <WorkspaceDescriptor>[
   ),
 ];
 
-Widget _harness({required Size size}) {
+Widget _harness({
+  required Size size,
+  String brandLabel = 'Mercantis',
+  String brandMark = 'M',
+}) {
   return MediaQuery(
     data: MediaQueryData(size: size, devicePixelRatio: 1),
     child: ProviderScope(
@@ -38,6 +42,8 @@ Widget _harness({required Size size}) {
             ShellRoute(
               builder: (context, state, child) => AdaptiveShell(
                 location: state.matchedLocation,
+                brandLabel: brandLabel,
+                brandMark: brandMark,
                 child: child,
               ),
               routes: [
@@ -112,6 +118,35 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Sales'), findsOneWidget);
       expect(find.text('Inventory'), findsOneWidget);
+    });
+
+    testWidgets('brand label/mark default to Mercantis on the sidebar',
+        (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_harness(size: const Size(1400, 900)));
+      await tester.pumpAndSettle();
+      expect(find.text('Mercantis'), findsOneWidget);
+      expect(find.text('M'), findsOneWidget);
+    });
+
+    testWidgets('brand hook overrides the sidebar label and mark',
+        (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_harness(
+        size: const Size(1400, 900),
+        brandLabel: 'Neuradix Atlas',
+        brandMark: 'N',
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Neuradix Atlas'), findsOneWidget);
+      expect(find.text('N'), findsOneWidget);
+      expect(find.text('Mercantis'), findsNothing);
     });
   });
 }

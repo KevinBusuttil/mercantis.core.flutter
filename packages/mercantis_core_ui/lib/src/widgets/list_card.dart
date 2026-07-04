@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/atlas/atlas_icon_chip.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
 
@@ -65,14 +66,12 @@ class ListCard extends StatelessWidget {
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
-                      borderRadius: MercantisRadius.rSm,
-                    ),
-                    child: Icon(icon, color: accent, size: 18),
+                  AtlasIconChip(
+                    icon: icon!,
+                    accent: accent,
+                    size: 32,
+                    radius: MercantisRadius.rSm,
+                    iconSize: 18,
                   ),
                   const SizedBox(width: MercantisSpacing.sm),
                 ],
