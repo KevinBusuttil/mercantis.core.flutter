@@ -12,6 +12,7 @@ class ResponsiveScaffold extends StatelessWidget {
     this.titleWidget,
     this.actions = const [],
     this.leading,
+    this.automaticallyImplyLeading = true,
     required this.body,
     this.floatingActionButton,
     this.maxBodyWidth = 1440,
@@ -23,6 +24,12 @@ class ResponsiveScaffold extends StatelessWidget {
   final Widget? titleWidget;
   final List<Widget> actions;
   final Widget? leading;
+
+  /// Mirrors [AppBar.automaticallyImplyLeading]: when no explicit [leading] is
+  /// given and the enclosing route can pop (e.g. the page was pushed from a
+  /// Settings tile), a back button is shown. Since this scaffold has no AppBar
+  /// to supply one, this keeps pushed pages navigable. Set false to suppress it.
+  final bool automaticallyImplyLeading;
   final Widget body;
   final Widget? floatingActionButton;
   final double maxBodyWidth;
@@ -35,6 +42,18 @@ class ResponsiveScaffold extends StatelessWidget {
     final width = MediaQuery.sizeOf(context).width;
     final hPadding = bp.isPhone ? MercantisSpacing.lg : MercantisSpacing.xxl;
     final vPadding = bp.isPhone ? MercantisSpacing.md : MercantisSpacing.xl;
+
+    // Fall back to a back button when nothing explicit was supplied. Scoped to
+    // *this* route via ModalRoute.impliesAppBarDismissal (what AppBar uses), not
+    // Navigator.canPop() — the latter reflects the whole stack, so a background
+    // root scaffold would wrongly imply a stale back button while a detail page
+    // is pushed above it.
+    final impliesDismissal =
+        ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
+    final effectiveLeading = leading ??
+        (automaticallyImplyLeading && impliesDismissal
+            ? const BackButton()
+            : null);
 
     Widget content = body;
     if (padBody) {
@@ -58,15 +77,18 @@ class ResponsiveScaffold extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (title != null || titleWidget != null || actions.isNotEmpty)
+          if (title != null ||
+              titleWidget != null ||
+              actions.isNotEmpty ||
+              effectiveLeading != null)
             Padding(
               padding: EdgeInsets.fromLTRB(
                 hPadding, MercantisSpacing.xl, hPadding, MercantisSpacing.sm,
               ),
               child: Row(
                 children: [
-                  if (leading != null) ...[
-                    leading!,
+                  if (effectiveLeading != null) ...[
+                    effectiveLeading,
                     const SizedBox(width: MercantisSpacing.md),
                   ],
                   Expanded(
