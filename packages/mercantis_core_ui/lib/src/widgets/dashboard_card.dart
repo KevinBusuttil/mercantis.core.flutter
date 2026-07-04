@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/atlas/atlas_icon_chip.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
 
@@ -49,14 +50,12 @@ class DashboardCard extends StatelessWidget {
                 Row(
                   children: [
                     if (icon != null)
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.12),
-                          borderRadius: MercantisRadius.rMd,
-                        ),
-                        child: Icon(icon, color: accent, size: 20),
+                      AtlasIconChip(
+                        icon: icon!,
+                        accent: accent,
+                        size: 36,
+                        radius: MercantisRadius.rMd,
+                        iconSize: 20,
                       ),
                     if (icon != null && title != null)
                       const SizedBox(width: MercantisSpacing.md),
