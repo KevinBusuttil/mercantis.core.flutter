@@ -9,6 +9,7 @@ import '../providers/core_providers.dart';
 import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
+import '../widgets/search/global_search.dart';
 import 'generic_form_view.dart';
 
 final _docsProvider =
@@ -195,6 +196,15 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       onNew: () => context.go('/form/${type.id}/new'),
       newLabel: 'New ${type.name}',
       trailingActions: [
+        // Phones have no navigation-rail search button, and this pane's own
+        // field only filters the current list — so surface global search here
+        // too. `manage_search` disambiguates it from the list filter field.
+        if (Breakpoint.of(context).isPhone)
+          IconButton(
+            icon: const Icon(Icons.manage_search),
+            tooltip: 'Search everything',
+            onPressed: () => showGlobalSearch(context),
+          ),
         ImportExportMenu(
           docType: type.id,
           onChanged: () => ref.invalidate(
