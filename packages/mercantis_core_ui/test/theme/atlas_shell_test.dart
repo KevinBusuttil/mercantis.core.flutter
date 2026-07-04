@@ -50,6 +50,29 @@ void main() {
     expect(find.widgetWithText(Tab, 'One'), findsOneWidget);
   });
 
+  testWidgets('AtlasHeader shows a search action (before other actions) that '
+      'fires onSearch, and omits it when null', (tester) async {
+    var searched = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        appBar: AtlasHeader(
+          title: 'SO-0001',
+          onSearch: () => searched = true,
+          actions: [IconButton(icon: const Icon(Icons.tune), onPressed: () {})],
+        ),
+        body: const SizedBox.shrink(),
+      ),
+    ));
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.search));
+    expect(searched, isTrue);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(appBar: AtlasHeader(title: 'T'), body: SizedBox.shrink()),
+    ));
+    expect(find.byIcon(Icons.search), findsNothing);
+  });
+
   testWidgets('AtlasTabs renders Tabs from labels and drives its controller',
       (tester) async {
     await tester.pumpWidget(const _TabsHarness(labels: ['Alpha', 'Beta', 'Gamma']));

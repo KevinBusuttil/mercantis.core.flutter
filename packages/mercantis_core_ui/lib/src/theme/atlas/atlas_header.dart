@@ -13,6 +13,7 @@ class AtlasHeader extends StatelessWidget implements PreferredSizeWidget {
     this.subtitle,
     this.leading,
     this.actions = const <Widget>[],
+    this.onSearch,
     this.bottom,
   });
 
@@ -20,6 +21,11 @@ class AtlasHeader extends StatelessWidget implements PreferredSizeWidget {
   final String? subtitle;
   final Widget? leading;
   final List<Widget> actions;
+
+  /// When set, a leading search action is prepended to [actions] — the tappable
+  /// global-search entry point for surfaces (notably phones) that have no
+  /// navigation-rail search button.
+  final VoidCallback? onSearch;
   final PreferredSizeWidget? bottom;
 
   @override
@@ -48,7 +54,15 @@ class AtlasHeader extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ],
             ),
-      actions: actions,
+      actions: [
+        if (onSearch != null)
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search',
+            onPressed: onSearch,
+          ),
+        ...actions,
+      ],
       bottom: bottom,
     );
   }

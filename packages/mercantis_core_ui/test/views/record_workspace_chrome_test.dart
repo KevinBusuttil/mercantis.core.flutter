@@ -102,6 +102,20 @@ void main() {
     expect(find.text('FORM_MARKER'), findsOneWidget);
   });
 
+  testWidgets(
+      'phone width surfaces a header search action; wider widths do not '
+      '(the rail carries search there)', (tester) async {
+    // Phone (< 600): no navigation rail, so the header exposes global search.
+    await pump(tester, const Size(500, 900));
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+
+    // Desktop: the shell rail already has a search button, so the record
+    // header does not duplicate it.
+    await pump(tester, const Size(1300, 900));
+    expect(find.byIcon(Icons.search), findsNothing);
+  });
+
   testWidgets('layout switches live when the width crosses the breakpoint',
       (tester) async {
     await pump(tester, const Size(1300, 900));
