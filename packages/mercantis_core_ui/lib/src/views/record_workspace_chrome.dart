@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/atlas/atlas.dart';
 import '../widgets/attachments_panel.dart';
 import '../widgets/document_timeline_view.dart';
 import '../widgets/print_record_button.dart';
@@ -94,8 +95,8 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _kSidePanelMinWidth;
         return Scaffold(
-          appBar: AppBar(
-            title: Text(widget.documentName ?? 'New ${widget.docTypeName}'),
+          appBar: AtlasHeader(
+            title: widget.documentName ?? 'New ${widget.docTypeName}',
             actions: [
               PrintRecordButton(
                 docType: widget.docTypeName,
@@ -114,13 +115,9 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
             // the main tab bar collapses to just the form (i.e. no tab bar).
             bottom: wide
                 ? null
-                : TabBar(
+                : AtlasTabs(
                     controller: _tabs,
-                    tabs: const [
-                      Tab(text: 'Form'),
-                      Tab(text: 'Timeline'),
-                      Tab(text: 'Attachments'),
-                    ],
+                    labels: const ['Form', 'Timeline', 'Attachments'],
                   ),
           ),
           body: Column(
@@ -165,12 +162,9 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
             children: [
               Material(
                 color: theme.colorScheme.surfaceContainerLow,
-                child: TabBar(
+                child: AtlasTabs(
                   controller: _sideTabs,
-                  tabs: const [
-                    Tab(text: 'Timeline'),
-                    Tab(text: 'Attachments'),
-                  ],
+                  labels: const ['Timeline', 'Attachments'],
                 ),
               ),
               Divider(height: 1, color: theme.dividerColor),
