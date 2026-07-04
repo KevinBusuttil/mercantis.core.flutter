@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../shell/breakpoints.dart';
 import '../theme/atlas/atlas.dart';
 import '../widgets/attachments_panel.dart';
 import '../widgets/document_timeline_view.dart';
 import '../widgets/print_record_button.dart';
+import '../widgets/search/global_search.dart';
 import 'command_bar_view.dart';
 import 'customize_fields_sheet.dart';
 
@@ -97,6 +99,12 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
         return Scaffold(
           appBar: AtlasHeader(
             title: widget.documentName ?? 'New ${widget.docTypeName}',
+            // Phones have no navigation-rail search button, so surface a
+            // tappable global-search action in the header there; larger
+            // breakpoints already carry the rail's search affordance.
+            onSearch: Breakpoint.of(context).isPhone
+                ? () => showGlobalSearch(context)
+                : null,
             actions: [
               PrintRecordButton(
                 docType: widget.docTypeName,

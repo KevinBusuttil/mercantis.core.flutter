@@ -6,6 +6,7 @@ import '../shell/responsive_scaffold.dart';
 import '../theme/atlas/atlas.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
+import '../widgets/search/global_search.dart';
 import '../widgets/quick_action_tile.dart';
 import 'dashboard_card_spec.dart';
 import 'quick_action.dart';
@@ -52,7 +53,15 @@ class WorkspaceView extends ConsumerWidget {
       title: descriptor.label,
       subtitle: descriptor.subtitle,
       actions: isPhone
-          ? const []
+          // Phones have no navigation-rail search button, so the dashboard
+          // header carries the tappable global-search entry point.
+          ? [
+              IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Search',
+                onPressed: () => showGlobalSearch(context),
+              ),
+            ]
           : [
               if (descriptor.quickActions.isNotEmpty)
                 FilledButton.icon(
