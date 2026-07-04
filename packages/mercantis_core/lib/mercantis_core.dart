@@ -99,4 +99,5 @@ export 'src/printing/print_format.dart';
 export 'src/printing/print_renderer.dart';
 export 'src/printing/plain_text_print_renderer.dart';
 export 'src/printing/pdf_print_renderer.dart';
+export 'src/printing/html_print_renderer.dart';
 export 'src/printing/print_service.dart';

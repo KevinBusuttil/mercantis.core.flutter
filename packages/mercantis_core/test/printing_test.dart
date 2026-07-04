@@ -116,6 +116,87 @@ void main() {
     });
   });
 
+  group('HtmlPrintRenderer', () {
+    test('renders a self-contained document with every section', () async {
+      final result = await const HtmlPrintRenderer().render(
+        PrintRenderContext(
+            format: format, document: invoice(), letterHead: letterHead),
+      );
+      final html = utf8.decode(result.bytes);
+
+      expect(result.mimeType, 'text/html; charset=utf-8');
+      expect(result.suggestedFileName, 'inv-INV-1.html');
+      expect(html, startsWith('<!DOCTYPE html>'));
+      expect(html, contains('<style>')); // inline CSS — no external assets
+      expect(html, contains('class="letterhead"'));
+      expect(html, contains('ACME Corp')); // letter head
+      expect(html, contains('<h1>Invoice INV-1</h1>')); // heading substitution
+      expect(html, contains('<p>Bill to Bob.</p>')); // paragraph
+      expect(html, contains('class="fields"'));
+      expect(html, contains('<th>Customer</th>'));
+      expect(html, contains('<td>Bob</td>'));
+      expect(html, contains('<th>Total</th>')); // overridden field label
+      expect(html, contains('class="grid"'));
+      expect(html, contains('<th>Item</th>')); // table header (humanised)
+      expect(html, contains('<td>Widget</td>')); // table row
+      expect(html, contains('<td>Gadget</td>'));
+      expect(html, contains('class="kv"')); // keyValue
+      expect(html, contains('Thank you')); // footer
+    });
+
+    test('escapes HTML in document values (no injection)', () async {
+      final doc = Document(
+        id: 'INV-2',
+        docType: 'Sales Invoice',
+        payload: {'customer': 'A & B <script>'},
+      );
+      const fmt = PrintFormat(
+        id: 'esc',
+        name: 'Esc',
+        docType: 'Sales Invoice',
+        sections: [
+          ParagraphSection('Hello {customer}'),
+          FieldsSection(keys: ['customer']),
+        ],
+      );
+      final html = utf8.decode(
+        (await const HtmlPrintRenderer().render(PrintRenderContext(
+                format: fmt, document: doc, letterHead: null)))
+            .bytes,
+      );
+      expect(html, contains('A &amp; B &lt;script&gt;'));
+      expect(html, isNot(contains('<script>')));
+    });
+
+    test('an empty table section renders no table', () async {
+      const fmt = PrintFormat(
+        id: 'empty',
+        name: 'Empty',
+        docType: 'Sales Invoice',
+        sections: [TableSection(tableKey: 'missing')],
+      );
+      final html = utf8.decode(
+        (await const HtmlPrintRenderer().render(PrintRenderContext(
+                format: fmt, document: invoice(), letterHead: null)))
+            .bytes,
+      );
+      expect(html, isNot(contains('<table')));
+    });
+
+    test('PrintService renders the html kind by default', () async {
+      final svc = PrintService()
+        ..registerLetterHead(letterHead)
+        ..registerFormat(format);
+      final result = await svc.render(
+        formatId: 'inv',
+        document: invoice(),
+        kind: PrintOutputKind.html,
+      );
+      expect(result.mimeType, 'text/html; charset=utf-8');
+      expect(utf8.decode(result.bytes), contains('<h1>Invoice INV-1</h1>'));
+    });
+  });
+
   group('PrintService', () {
     PrintService service() => PrintService()
       ..registerLetterHead(letterHead)

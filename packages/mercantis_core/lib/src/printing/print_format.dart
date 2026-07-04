@@ -4,7 +4,7 @@
 library;
 
 /// Output format requested from `PrintService.render(...)`.
-enum PrintOutputKind { plainText, pdf }
+enum PrintOutputKind { plainText, pdf, html }
 
 /// Reusable header/footer chrome attached to print formats. Stored once per app
 /// and referenced by [PrintFormat.letterHeadId].
