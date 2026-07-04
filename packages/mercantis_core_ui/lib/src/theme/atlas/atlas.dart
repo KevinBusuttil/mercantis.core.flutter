@@ -3,6 +3,7 @@
 library;
 
 export 'atlas_bottom_action_bar.dart';
+export 'atlas_bottom_navigation.dart';
 export 'atlas_bottom_sheet.dart';
 export 'atlas_child_table_empty_state.dart';
 export 'atlas_colors.dart';
@@ -14,6 +15,8 @@ export 'atlas_header.dart';
 export 'atlas_icon_chip.dart';
 export 'atlas_label.dart';
 export 'atlas_money_field.dart';
+export 'atlas_nav_destination.dart';
+export 'atlas_navigation_rail.dart';
 export 'atlas_option_sheet.dart';
 export 'atlas_quantity_stepper.dart';
 export 'atlas_section_card.dart';

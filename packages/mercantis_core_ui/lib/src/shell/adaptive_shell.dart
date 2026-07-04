@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../theme/atlas/atlas_bottom_navigation.dart';
+import '../theme/atlas/atlas_nav_destination.dart';
+import '../theme/atlas/atlas_navigation_rail.dart';
 import '../theme/tokens/brand_colors.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
@@ -104,17 +107,17 @@ class _PhoneShell extends StatelessWidget {
     final overflow = visible.length <= _maxPrimary + 1
         ? const <WorkspaceDescriptor>[]
         : visible.skip(_maxPrimary).toList();
-    final destinations = [
+    final destinations = <AtlasNavDestination>[
       for (final w in primary)
-        NavigationDestination(
-          icon: Icon(w.icon),
-          selectedIcon: Icon(w.selectedIcon),
+        AtlasNavDestination(
+          icon: w.icon,
+          selectedIcon: w.selectedIcon,
           label: w.navLabel,
         ),
       if (overflow.isNotEmpty)
-        const NavigationDestination(
-          icon: Icon(Icons.more_horiz),
-          selectedIcon: Icon(Icons.more_horiz),
+        const AtlasNavDestination(
+          icon: Icons.more_horiz,
+          selectedIcon: Icons.more_horiz,
           label: 'More',
         ),
     ];
@@ -124,16 +127,19 @@ class _PhoneShell extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(top: false, child: child),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: AtlasBottomNavigation(
         selectedIndex: navIndex,
-        onDestinationSelected: (i) {
+        // Tint the selection pill with the active workspace's accent so the
+        // module keeps its colour when the rail collapses to the bottom bar.
+        accentColor: visible[selectedIndex].accentColor,
+        destinations: destinations,
+        onSelected: (i) {
           if (i < primary.length) {
             context.go(primary[i].path);
           } else {
             _showMore(context, overflow);
           }
         },
-        destinations: destinations,
       ),
     );
   }
@@ -182,21 +188,21 @@ class _RailShell extends StatelessWidget {
       body: Row(
         children: [
           _Brand(extended: extended),
-          NavigationRail(
+          AtlasNavigationRail(
             extended: extended,
-            minWidth: 72,
-            minExtendedWidth: 220,
             selectedIndex: selectedIndex,
-            onDestinationSelected: (i) => context.go(visible[i].path),
+            // Tint the selection indicator with the active workspace's accent.
+            accentColor: visible[selectedIndex].accentColor,
+            onSelected: (i) => context.go(visible[i].path),
             leading: _SearchButton(extended: extended),
             destinations: [
               for (final w in visible)
-                NavigationRailDestination(
-                  icon: Icon(w.icon),
-                  selectedIcon: Icon(w.selectedIcon),
+                AtlasNavDestination(
+                  icon: w.icon,
+                  selectedIcon: w.selectedIcon,
                   // Full label beside the icon (extended rail) has room; the
                   // compact rail stacks it under the icon, so use the terse one.
-                  label: Text(extended ? w.label : w.navLabel),
+                  label: extended ? w.label : w.navLabel,
                 ),
             ],
           ),
