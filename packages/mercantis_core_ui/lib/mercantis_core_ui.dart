@@ -74,10 +74,6 @@ export 'src/widgets/approvals/approval_inbox.dart';
 export 'src/widgets/approvals/approval_inbox_service.dart';
 export 'src/widgets/approvals/metadata_approval_inbox_source.dart';
 
-// Legacy navigation (deprecated)
-export 'src/navigation/shell_router.dart';
-export 'src/navigation/navigation_shell.dart';
-
 // Document views (metadata-driven)
 export 'src/views/command_bar_view.dart';
 export 'src/views/document_action.dart';
