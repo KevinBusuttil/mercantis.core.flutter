@@ -63,6 +63,7 @@ class AppNavigationRegistry {
               path: '/list/:docType',
               builder: (context, state) => MetadataListView(
                 docTypeName: state.pathParameters['docType']!,
+                selectedId: state.uri.queryParameters['selected'],
               ),
             ),
             GoRoute(

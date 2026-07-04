@@ -60,7 +60,9 @@ class _ListArgs {
 /// Metadata-driven document list with the new design language.
 ///
 /// - Phone: single column list. Row tap pushes the form route.
-/// - Tablet / desktop: list-detail split. Row tap selects in-place.
+/// - Tablet / desktop: list-detail split. Row tap selects in-place, syncing the
+///   selection into the route as `?selected=:id` so it survives refresh and is
+///   deep-linkable.
 class MetadataListView extends ConsumerStatefulWidget {
   const MetadataListView({
     super.key,
@@ -68,12 +70,18 @@ class MetadataListView extends ConsumerStatefulWidget {
     this.title,
     this.subtitle,
     this.filter,
+    this.selectedId,
   });
 
   final String docTypeName;
   final String? title;
   final String? subtitle;
   final Map<String, dynamic>? filter;
+
+  /// The selected record id, sourced from the route's `?selected=` query
+  /// parameter (tablet/desktop split only). Null selects the first record for
+  /// the detail pane without pinning a selection in the URL.
+  final String? selectedId;
 
   @override
   ConsumerState<MetadataListView> createState() => _MetadataListViewState();
@@ -82,7 +90,6 @@ class MetadataListView extends ConsumerStatefulWidget {
 class _MetadataListViewState extends ConsumerState<MetadataListView> {
   String _query = '';
   String _statusFilter = 'all';
-  String? _selectedId;
 
   @override
   Widget build(BuildContext context) {
@@ -185,12 +192,16 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
             ]
           : const [],
       rows: rows,
-      selectedId: _selectedId,
+      selectedId: widget.selectedId,
       onRowTap: (r) {
         if (Breakpoint.of(context).isPhone) {
           context.go('/form/${type.id}/${r.id}');
         } else {
-          setState(() => _selectedId = r.id);
+          // Sync the selection into the route so it survives refresh and is
+          // deep-linkable; the query change rebuilds this view with the new
+          // selectedId (local filter state persists — same route page key).
+          context.go(
+              '/list/${type.id}?selected=${Uri.encodeQueryComponent(r.id)}');
         }
       },
       onNew: () => context.go('/form/${type.id}/new'),
@@ -223,9 +234,10 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
 
   Document? _pickSelected(List<Document> docs) {
     if (docs.isEmpty) return null;
-    if (_selectedId != null) {
+    final selected = widget.selectedId;
+    if (selected != null) {
       for (final d in docs) {
-        if (d.id == _selectedId) return d;
+        if (d.id == selected) return d;
       }
     }
     return docs.first;
