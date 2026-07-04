@@ -75,6 +75,7 @@ class AdaptiveShell extends ConsumerWidget {
           Breakpoint.expanded => _SidebarShell(
               visible: visible,
               selectedIndex: selected,
+              location: location,
               brandLabel: brandLabel,
               brandMark: brandMark,
               child: child,
@@ -331,10 +332,40 @@ class _SearchButton extends StatelessWidget {
 }
 
 // ─── Sidebar (expanded) ──────────────────────────────────────────────────────
-class _SidebarShell extends StatelessWidget {
+
+/// Which workspaces are expanded in the desktop sidebar (HU5 multi-expand).
+/// A set, so any number of workspaces can be open at once. Held in a provider
+/// so the expanded state survives the shell rebuilding on every in-shell
+/// navigation — session-level persistence; a storage-backed notifier can later
+/// replace this seam for cross-launch persistence.
+final sidebarExpandedProvider =
+    NotifierProvider<SidebarExpandedNotifier, Set<String>>(
+        SidebarExpandedNotifier.new);
+
+class SidebarExpandedNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => <String>{};
+
+  void toggle(String workspaceId) {
+    final next = {...state};
+    if (!next.remove(workspaceId)) next.add(workspaceId);
+    state = next;
+  }
+}
+
+/// Canonical item → route mapping, mirroring [WorkspaceView]'s item taps so the
+/// sidebar and the workspace dashboard navigate identically.
+String _sidebarItemPath(String workspaceId, WorkspaceItem item) {
+  if (item is DocTypeWorkspaceItem) return '/list/${item.docType}';
+  if (item is CustomWorkspaceItem) return '/w/$workspaceId/${item.routeName}';
+  return '/w/$workspaceId'; // dashboard / report → workspace home
+}
+
+class _SidebarShell extends ConsumerStatefulWidget {
   const _SidebarShell({
     required this.visible,
     required this.selectedIndex,
+    required this.location,
     required this.brandLabel,
     required this.brandMark,
     required this.child,
@@ -342,14 +373,51 @@ class _SidebarShell extends StatelessWidget {
 
   final List<WorkspaceDescriptor> visible;
   final int selectedIndex;
+  final String location;
   final String brandLabel;
   final String brandMark;
   final Widget child;
 
   @override
+  ConsumerState<_SidebarShell> createState() => _SidebarShellState();
+}
+
+class _SidebarShellState extends ConsumerState<_SidebarShell> {
+  final _filterCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _filterCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _itemMatches(WorkspaceItem i, String q) =>
+      i.resolvedLabel().toLowerCase().contains(q);
+
+  bool _workspaceHasMatch(WorkspaceDescriptor w, String q) {
+    if (w.label.toLowerCase().contains(q)) return true;
+    for (final s in w.sections) {
+      if (s.label.toLowerCase().contains(q)) return true;
+      if (s.items.any((i) => _itemMatches(i, q))) return true;
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final expandedSet = ref.watch(sidebarExpandedProvider);
+    final q = _query.trim().toLowerCase();
+    final filtering = q.isNotEmpty;
+
+    final shown = [
+      for (final w in widget.visible)
+        if (!filtering || _workspaceHasMatch(w, q)) w,
+    ];
+    final selectedWorkspace = widget.visible[widget.selectedIndex];
+
     return Scaffold(
       body: Row(
         children: [
@@ -359,70 +427,279 @@ class _SidebarShell extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _Brand(extended: true, label: brandLabel, mark: brandMark),
+                _Brand(extended: true, label: widget.brandLabel, mark: widget.brandMark),
                 const SizedBox(height: MercantisSpacing.lg),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: MercantisSpacing.lg),
                   child: _SearchButton(extended: true),
                 ),
                 const SizedBox(height: MercantisSpacing.sm),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: MercantisSpacing.sm),
-                    children: [
-                      for (var i = 0; i < visible.length; i++)
-                        _SidebarTile(
-                          workspace: visible[i],
-                          selected: i == selectedIndex,
-                        ),
-                    ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: MercantisSpacing.lg),
+                  child: _SidebarFilterField(
+                    controller: _filterCtrl,
+                    onChanged: (v) => setState(() => _query = v),
+                    onClear: () => setState(() {
+                      _filterCtrl.clear();
+                      _query = '';
+                    }),
                   ),
+                ),
+                const SizedBox(height: MercantisSpacing.xs),
+                Expanded(
+                  child: shown.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(MercantisSpacing.lg),
+                            child: Text('No matches',
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: cs.onSurfaceVariant)),
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: MercantisSpacing.sm),
+                          children: [
+                            for (final w in shown)
+                              _SidebarWorkspaceTile(
+                                workspace: w,
+                                selected: identical(w, selectedWorkspace),
+                                location: widget.location,
+                                query: q,
+                                // While filtering, force matched workspaces open
+                                // so the matching items are visible; otherwise use
+                                // the persisted per-workspace expansion.
+                                expanded:
+                                    filtering || expandedSet.contains(w.id),
+                                showToggle: !filtering && w.sections.isNotEmpty,
+                                onToggle: () => ref
+                                    .read(sidebarExpandedProvider.notifier)
+                                    .toggle(w.id),
+                              ),
+                          ],
+                        ),
                 ),
               ],
             ),
           ),
           VerticalDivider(thickness: 1, width: 1, color: cs.outlineVariant),
-          Expanded(child: child),
+          Expanded(child: widget.child),
         ],
       ),
     );
   }
 }
 
-class _SidebarTile extends StatelessWidget {
-  const _SidebarTile({required this.workspace, required this.selected});
+class _SidebarFilterField extends StatelessWidget {
+  const _SidebarFilterField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: MercantisRadius.rMd,
+      borderSide: BorderSide(color: cs.outlineVariant),
+    );
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: theme.textTheme.bodyMedium,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Filter navigation',
+        prefixIcon: const Icon(Icons.filter_list, size: 18),
+        prefixIconConstraints:
+            const BoxConstraints(minWidth: 36, minHeight: 36),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                tooltip: 'Clear filter',
+                visualDensity: VisualDensity.compact,
+                onPressed: onClear,
+              ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        filled: true,
+        fillColor: cs.surfaceContainerLow,
+        border: border,
+        enabledBorder: border,
+      ),
+    );
+  }
+}
+
+class _SidebarWorkspaceTile extends StatelessWidget {
+  const _SidebarWorkspaceTile({
+    required this.workspace,
+    required this.selected,
+    required this.location,
+    required this.query,
+    required this.expanded,
+    required this.showToggle,
+    required this.onToggle,
+  });
+
   final WorkspaceDescriptor workspace;
   final bool selected;
+  final String location;
+
+  /// Lowercased filter query; empty when not filtering.
+  final String query;
+  final bool expanded;
+  final bool showToggle;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final accent = workspace.accentColor ?? cs.primary;
+    // A workspace-label match reveals all of its items; an item-level match
+    // narrows to just the matching items.
+    final wsLabelMatch =
+        query.isNotEmpty && workspace.label.toLowerCase().contains(query);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          child: Material(
+            color: selected ? accent.withValues(alpha: 0.10) : Colors.transparent,
+            borderRadius: MercantisRadius.rMd,
+            child: InkWell(
+              borderRadius: MercantisRadius.rMd,
+              onTap: () => context.go(workspace.path),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      selected ? workspace.selectedIcon : workspace.icon,
+                      size: 20,
+                      color: selected ? accent : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: MercantisSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        workspace.label,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (showToggle)
+                      InkWell(
+                        borderRadius: MercantisRadius.rSm,
+                        onTap: onToggle,
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Icon(
+                            expanded ? Icons.expand_less : Icons.expand_more,
+                            size: 18,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (expanded)
+          for (final section in workspace.sections)
+            ..._sectionRows(context, section, wsLabelMatch),
+      ],
+    );
+  }
+
+  List<Widget> _sectionRows(
+      BuildContext context, WorkspaceSection section, bool wsLabelMatch) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final sectionLabelMatch =
+        query.isNotEmpty && section.label.toLowerCase().contains(query);
+    final items = [
+      for (final i in section.items)
+        if (query.isEmpty ||
+            wsLabelMatch ||
+            sectionLabelMatch ||
+            i.resolvedLabel().toLowerCase().contains(query))
+          i,
+    ];
+    if (items.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+            46, MercantisSpacing.sm, 12, MercantisSpacing.xs),
+        child: Text(
+          section.label.toUpperCase(),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5),
+        ),
+      ),
+      for (final item in items)
+        _SidebarItemRow(
+          workspaceId: workspace.id,
+          item: item,
+          active: location == _sidebarItemPath(workspace.id, item),
+        ),
+    ];
+  }
+}
+
+class _SidebarItemRow extends StatelessWidget {
+  const _SidebarItemRow({
+    required this.workspaceId,
+    required this.item,
+    required this.active,
+  });
+
+  final String workspaceId;
+  final WorkspaceItem item;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
       child: Material(
-        color: selected ? accent.withValues(alpha: 0.10) : Colors.transparent,
-        borderRadius: MercantisRadius.rMd,
+        color: active ? cs.primary.withValues(alpha: 0.10) : Colors.transparent,
+        borderRadius: MercantisRadius.rSm,
         child: InkWell(
-          borderRadius: MercantisRadius.rMd,
-          onTap: () => context.go(workspace.path),
+          borderRadius: MercantisRadius.rSm,
+          onTap: () => context.go(_sidebarItemPath(workspaceId, item)),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            padding: const EdgeInsets.fromLTRB(46, 8, 10, 8),
             child: Row(
               children: [
-                Icon(
-                  selected ? workspace.selectedIcon : workspace.icon,
-                  size: 20,
-                  color: selected ? accent : cs.onSurfaceVariant,
-                ),
-                const SizedBox(width: MercantisSpacing.sm),
+                if (item.icon != null) ...[
+                  Icon(item.icon,
+                      size: 16,
+                      color: active ? cs.primary : cs.onSurfaceVariant),
+                  const SizedBox(width: MercantisSpacing.sm),
+                ],
                 Expanded(
                   child: Text(
-                    workspace.label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? cs.onSurface : cs.onSurface,
+                    item.resolvedLabel(),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                      color: active ? cs.onSurface : cs.onSurfaceVariant,
                     ),
                   ),
                 ),
