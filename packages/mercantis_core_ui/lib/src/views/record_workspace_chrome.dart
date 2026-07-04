@@ -128,24 +128,22 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
                     labels: const ['Form', 'Timeline', 'Attachments'],
                   ),
           ),
-          body: Column(
-            children: [
-              CommandBarView(
-                docTypeName: widget.docTypeName,
-                documentName: widget.documentName,
-                isDirty: widget.isDirty,
-                isSaving: widget.isSaving,
-                isSubmittable: widget.isSubmittable,
-                docStatus: widget.docStatus,
-                onSave: widget.onSave,
-                onSubmit: widget.onSubmit,
-                onCancel: widget.onCancel,
-                onAmend: widget.onAmend,
-                error: widget.error,
-                extraActions: widget.extraActions,
-              ),
-              Expanded(child: wide ? _wideBody(context) : _tabbedBody()),
-            ],
+          body: wide ? _wideBody(context) : _tabbedBody(),
+          // The lifecycle command bar is pinned to the bottom so Save/Submit are
+          // thumb-reachable on phones; its action gating is unchanged.
+          bottomNavigationBar: CommandBarView(
+            docTypeName: widget.docTypeName,
+            documentName: widget.documentName,
+            isDirty: widget.isDirty,
+            isSaving: widget.isSaving,
+            isSubmittable: widget.isSubmittable,
+            docStatus: widget.docStatus,
+            onSave: widget.onSave,
+            onSubmit: widget.onSubmit,
+            onCancel: widget.onCancel,
+            onAmend: widget.onAmend,
+            error: widget.error,
+            extraActions: widget.extraActions,
           ),
         );
       },
