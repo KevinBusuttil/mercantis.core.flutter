@@ -465,6 +465,10 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     });
     try {
       await engine.delete(widget.docTypeName, current.id, _userRoles);
+      // Drop the deleted document from the fetch cache so reopening it (Back, or
+      // a stale list row) re-fetches — and can't resurrect it from a cached,
+      // non-empty-id Document that a save would re-insert.
+      ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
       if (!mounted) return;
       context.go('/list/${widget.docTypeName}');
     } catch (e) {
