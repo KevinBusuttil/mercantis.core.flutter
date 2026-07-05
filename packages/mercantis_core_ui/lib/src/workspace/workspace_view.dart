@@ -132,10 +132,11 @@ class WorkspaceView extends ConsumerWidget {
                 subtitle: qa.description != null ? Text(qa.description!) : null,
                 onTap: () {
                   Navigator.of(context).pop();
+                  // push (not go) so the system back returns here, not exits.
                   if (qa.docType != null) {
-                    context.go('/form/${qa.docType}/new');
+                    context.push('/form/${qa.docType}/new');
                   } else if (qa.routeName != null) {
-                    context.go(qa.routeName!);
+                    context.push(qa.routeName!);
                   }
                 },
               ),
@@ -230,10 +231,11 @@ class _QuickActionsRow extends StatelessWidget {
                 action: qa,
                 accentColor: accent,
                 onTap: () {
+                  // push (not go) so the system back returns here, not exits.
                   if (qa.docType != null) {
-                    GoRouter.of(context).go('/form/${qa.docType}/new');
+                    GoRouter.of(context).push('/form/${qa.docType}/new');
                   } else if (qa.routeName != null) {
-                    GoRouter.of(context).go(qa.routeName!);
+                    GoRouter.of(context).push(qa.routeName!);
                   }
                 },
               ),
@@ -308,10 +310,12 @@ class _SectionGrid extends StatelessWidget {
   }
 
   void _onTap(BuildContext context, WorkspaceItem item) {
+    // Drilling into a list/custom screen pushes (so back returns to the
+    // workspace); a dashboard is the workspace home itself, so it replaces.
     if (item is DocTypeWorkspaceItem) {
-      context.go('/list/${item.docType}');
+      context.push('/list/${item.docType}');
     } else if (item is CustomWorkspaceItem) {
-      context.go('/w/$workspaceId/${item.routeName}');
+      context.push('/w/$workspaceId/${item.routeName}');
     } else if (item is DashboardWorkspaceItem) {
       context.go('/w/$workspaceId');
     }
