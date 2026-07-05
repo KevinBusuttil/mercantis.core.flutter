@@ -49,7 +49,14 @@ class AdaptiveShell extends ConsumerWidget {
     }
     final selected = _selectedWorkspaceIndex(location, visible);
 
-    return CallbackShortcuts(
+    // Intercept the system/back-swipe (Android's left-edge gesture, the back
+    // button, browser back) and walk our own history — the app navigates by
+    // replace (context.go), so there's no Navigator stack to pop, and without
+    // this a back-swipe exits the app instead of returning to the previous
+    // screen.
+    return BackSwipeScope(
+      location: location,
+      child: CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
             showGlobalSearch(context),
@@ -59,19 +66,10 @@ class AdaptiveShell extends ConsumerWidget {
       child: Focus(
         autofocus: true,
         child: switch (bp) {
-          // Phone: a left-edge swipe goes up one level (form → its list →
-          // home), matching the drill-in path. Only on phone, where the left
-          // edge is content (no nav rail) and back-swipe is expected.
-          Breakpoint.phone => _EdgeBackDetector(
-              onBack: () {
-                final parent = parentLocation(location);
-                if (parent != null) context.go(parent);
-              },
-              child: _PhoneShell(
-                visible: visible,
-                selectedIndex: selected,
-                child: child,
-              ),
+          Breakpoint.phone => _PhoneShell(
+              visible: visible,
+              selectedIndex: selected,
+              child: child,
             ),
           Breakpoint.compact => _RailShell(
               visible: visible,
@@ -102,69 +100,84 @@ class AdaptiveShell extends ConsumerWidget {
             ),
         },
       ),
+      ),
     );
   }
 }
 
-/// The location a left-edge back-swipe navigates to from [location] — one level
-/// up the drill path. `/form/:type/:name` → its list, `/list/:type` → home,
-/// `/w/:id/:route` → its workspace, `/w/:id` → home. Null at a top-level
-/// location (nothing to go back to). Operates on the raw (still URL-encoded)
-/// path segments so the rebuilt location matches how the route was addressed.
-String? parentLocation(String location) {
-  final q = location.indexOf('?');
-  final path = q >= 0 ? location.substring(0, q) : location;
-  final segs = path.split('/').where((s) => s.isNotEmpty).toList();
-  if (segs.isEmpty) return null;
-  switch (segs.first) {
-    case 'form':
-      return segs.length >= 2 ? '/list/${segs[1]}' : '/';
-    case 'list':
-      return '/';
-    case 'w':
-      return segs.length >= 3 ? '/w/${segs[1]}' : '/';
-    default:
-      return null;
+/// A back-stack for the app's replace-based navigation (`context.go`): records
+/// visited locations so a back gesture can return to the *actual* previous
+/// screen — not a heuristic parent — even when the user jumped straight to a
+/// form via a quick action. Pure, so the stack logic is unit-testable.
+class NavHistory {
+  NavHistory(String initial) {
+    _stack.add(initial);
+  }
+
+  final List<String> _stack = [];
+  static const _cap = 50;
+
+  int get length => _stack.length;
+  bool get canGoBack => _stack.length > 1;
+  String? get current => _stack.isEmpty ? null : _stack.last;
+
+  /// Record a forward navigation. A repeat of the current location is ignored —
+  /// which also absorbs the router re-reporting the location after [back].
+  void visit(String location) {
+    if (_stack.isNotEmpty && _stack.last == location) return;
+    _stack.add(location);
+    if (_stack.length > _cap) _stack.removeAt(0);
+  }
+
+  /// Drop the current location and return the previous one to navigate to, or
+  /// null when there's nothing to go back to (let the system exit the app).
+  String? back() {
+    if (_stack.length <= 1) return null;
+    _stack.removeLast();
+    return _stack.last;
   }
 }
 
-/// Overlays a thin left-edge strip that turns a rightward swipe/flick into
-/// [onBack]. The strip is narrow (24px) and only handles horizontal drags, so
-/// taps and in-content gestures (row swipes, tab swipes) are unaffected.
-class _EdgeBackDetector extends StatefulWidget {
-  const _EdgeBackDetector({required this.onBack, required this.child});
-  final VoidCallback onBack;
+/// Wraps the shell in a [PopScope] that turns every back intent — Android's
+/// left-edge swipe, the back button, browser back — into a walk back through
+/// [NavHistory], instead of letting go_router exit the app (it has no Navigator
+/// stack to pop, since the app navigates by replace). Exits only when there's
+/// no history left. Persists across in-shell navigations because the ShellRoute
+/// keeps its subtree — so [State] (and the history) survives.
+class BackSwipeScope extends StatefulWidget {
+  const BackSwipeScope({super.key, required this.location, required this.child});
+  final String location;
   final Widget child;
 
   @override
-  State<_EdgeBackDetector> createState() => _EdgeBackDetectorState();
+  State<BackSwipeScope> createState() => _BackSwipeScopeState();
 }
 
-class _EdgeBackDetectorState extends State<_EdgeBackDetector> {
-  double _dx = 0;
+class _BackSwipeScopeState extends State<BackSwipeScope> {
+  late final NavHistory _history = NavHistory(widget.location);
+
+  @override
+  void didUpdateWidget(BackSwipeScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.location != oldWidget.location) {
+      // Record forward navigations; a back() target is deduped by NavHistory.
+      // build() runs right after didUpdateWidget, so no setState is needed.
+      _history.visit(widget.location);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 24,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragStart: (_) => _dx = 0,
-            onHorizontalDragUpdate: (d) => _dx += d.delta.dx,
-            onHorizontalDragEnd: (d) {
-              final flick = (d.primaryVelocity ?? 0) > 300;
-              if (_dx > 90 || flick) widget.onBack();
-              _dx = 0;
-            },
-          ),
-        ),
-      ],
+    return PopScope(
+      // Let the system handle back (exit) only when there's nowhere to go back
+      // to; otherwise intercept and walk our history.
+      canPop: !_history.canGoBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final target = _history.back();
+        if (target != null) context.go(target);
+      },
+      child: widget.child,
     );
   }
 }
