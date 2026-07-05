@@ -167,6 +167,20 @@ void main() {
           1); // global only
     });
 
+    test('unreadCountForAudience(includeGlobal: false) counts addressed only',
+        () async {
+      // The badge count: the shared broadcast is excluded, only addressed rows.
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['alice', 'Manager'], includeGlobal: false),
+          2);
+      // No addressed keys → nothing (the global feed doesn't count here).
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: const [], includeGlobal: false),
+          0);
+    });
+
     test('markAllReadForAudience clears addressed rows but not shared broadcasts',
         () async {
       await inbox.markAllReadForAudience(recipients: ['alice']);
@@ -177,8 +191,14 @@ void main() {
       expect(await inbox.unreadCount(recipient: null), 1);
       expect(await inbox.unreadCount(recipient: 'bob'), 1);
       expect(await inbox.unreadCount(recipient: 'Manager'), 1);
-      // The audience count therefore still includes the unread broadcast.
+      // The union count still includes the unread broadcast...
       expect(await inbox.unreadCountForAudience(recipients: ['alice']), 1);
+      // ...but the addressed-only badge count — what "mark all read" governs —
+      // is now fully cleared, so the bell zeroes out.
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['alice'], includeGlobal: false),
+          0);
     });
   });
 

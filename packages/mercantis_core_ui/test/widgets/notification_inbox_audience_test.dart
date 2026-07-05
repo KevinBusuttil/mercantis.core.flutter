@@ -56,17 +56,20 @@ void main() {
     expect(find.text('Hi Bob'), findsNothing); // someone else
   });
 
-  test('notificationUnreadForCurrentUserProvider counts the audience',
+  test('notificationUnreadForCurrentUserProvider badges addressed-only',
       () async {
     final container = ProviderContainer(
         overrides:
             overrides(const CurrentUser(id: 'alice', roles: {'Manager'})));
     addTearDown(container.dispose);
 
-    // Broadcast + Hi Alice + For managers = 3, excluding Bob's.
+    // The bell badge counts what "Mark all read" can clear: Hi Alice + For
+    // managers = 2. The shared Broadcast is shown in the list but excluded
+    // here — its read state is global, so it never contributes a badge an
+    // operator can't clear.
     expect(
         await container.read(notificationUnreadForCurrentUserProvider.future),
-        3);
+        2);
   });
 }
 

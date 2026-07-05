@@ -42,10 +42,17 @@ final notificationInboxForCurrentUserProvider =
   return inbox.entriesForAudience(recipients: currentUserRecipients(user));
 });
 
-/// Unread count across the current operator's audience — drives the shell bell
-/// badge.
+/// Unread count of messages **addressed to** the current operator — drives the
+/// shell bell badge. Broadcasts (the shared global feed) are shown in the inbox
+/// but deliberately excluded here: their read state is shared across operators,
+/// so "Mark all read" leaves them alone (see [NotificationInbox]). Counting them
+/// would strand a badge no operator could ever clear; scoping to addressed
+/// messages keeps the badge and "Mark all read" in step.
 final notificationUnreadForCurrentUserProvider = FutureProvider<int>((ref) async {
   final user = ref.watch(currentUserProvider);
   final inbox = await ref.watch(notificationInboxProvider.future);
-  return inbox.unreadCountForAudience(recipients: currentUserRecipients(user));
+  return inbox.unreadCountForAudience(
+    recipients: currentUserRecipients(user),
+    includeGlobal: false,
+  );
 });
