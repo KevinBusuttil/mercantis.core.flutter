@@ -19,6 +19,7 @@ void main() {
     List<Widget> extraActions = const [],
     VoidCallback? onCancel,
     VoidCallback? onAmend,
+    VoidCallback? onDelete,
     Size size = const Size(1000, 800),
   }) async {
     tester.view.physicalSize = size;
@@ -37,6 +38,7 @@ void main() {
           onSubmit: () {},
           onCancel: onCancel,
           onAmend: onAmend,
+          onDelete: onDelete,
           error: error,
           extraActions: extraActions,
         ),
@@ -92,6 +94,27 @@ void main() {
     await pump(tester, docStatus: 2, onAmend: () {});
     expect(find.text('Cancelled'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Amend'), findsOneWidget);
+  });
+
+  testWidgets('saved draft offers a Delete action when onDelete is wired',
+      (tester) async {
+    await pump(tester,
+        docStatus: 0, documentName: 'DOC-1', onDelete: () {});
+    expect(find.widgetWithText(TextButton, 'Delete'), findsOneWidget);
+  });
+
+  testWidgets('new (unsaved) draft offers no Delete', (tester) async {
+    await pump(tester,
+        docStatus: 0, documentName: null, onDelete: () {});
+    expect(find.text('Delete'), findsNothing);
+  });
+
+  testWidgets('submitted document offers no Delete (not a draft)',
+      (tester) async {
+    await pump(tester,
+        docStatus: 1, documentName: 'DOC-1', onDelete: () {}, onCancel: () {});
+    expect(find.text('Delete'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, 'Cancel'), findsOneWidget);
   });
 
   testWidgets('saving shows a spinner instead of the action buttons',
