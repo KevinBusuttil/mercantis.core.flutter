@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../metadata/metadata_display.dart';
@@ -401,6 +402,110 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     }
   }
 
+  /// Reverses a submitted document ([DocumentEngine.cancel]) after a
+  /// confirmation, since it undoes the posting. A cancelled document can be
+  /// Amended into a fresh draft afterwards. Refreshes in place — same id.
+  Future<void> _cancel(DocumentEngine engine, Document current) async {
+    final ok = await _confirmLifecycle(
+      title: 'Cancel this ${widget.docTypeName}?',
+      message:
+          'Cancelling reverses ${current.id} and any ledger effects it posted. '
+          'You can Amend a cancelled document into a new draft afterwards.',
+      confirmLabel: 'Cancel document',
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      await engine.cancel(current, _userRoles);
+      ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
+    } catch (e) {
+      setState(() =>
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// Creates an editable draft copy of a cancelled document
+  /// ([DocumentEngine.amend]) and opens it. Non-destructive, so no confirm.
+  Future<void> _amend(DocumentEngine engine, Document current) async {
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      final draft = await engine.amend(current, _userRoles);
+      if (!mounted) return;
+      context.go('/form/${widget.docTypeName}/${draft.id}');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString();
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  /// Permanently deletes a saved draft ([DocumentEngine.delete]) after a
+  /// confirmation, then returns to the DocType's list.
+  Future<void> _delete(DocumentEngine engine, Document current) async {
+    final ok = await _confirmLifecycle(
+      title: 'Delete this ${widget.docTypeName}?',
+      message: 'This permanently removes ${current.id}. This cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      await engine.delete(widget.docTypeName, current.id, _userRoles);
+      if (!mounted) return;
+      context.go('/list/${widget.docTypeName}');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e is DocumentEngineError ? e.humanMessage : e.toString();
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  /// Destructive-action confirm dialog. Returns true only when the user
+  /// explicitly confirms.
+  Future<bool> _confirmLifecycle({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(dialogContext).colorScheme.error),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final fetchAsync =
@@ -470,6 +575,12 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             docStatus: docStatus,
             onSave: () => _save(engine, doc, metaAsync.valueOrNull),
             onSubmit: () => _submit(engine, doc),
+            // Lifecycle transitions. CommandBarView gates each by docStatus, so
+            // Cancel only shows on a submitted doc and Amend on a cancelled one;
+            // Delete is offered only for a saved draft.
+            onCancel: () => _cancel(engine, doc),
+            onAmend: () => _amend(engine, doc),
+            onDelete: doc.id.isEmpty ? null : () => _delete(engine, doc),
             error: _error,
             extraActions: extraActions,
             child: metaAsync.when(

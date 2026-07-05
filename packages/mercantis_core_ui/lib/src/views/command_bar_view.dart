@@ -25,6 +25,7 @@ class CommandBarView extends StatelessWidget {
     required this.onSubmit,
     this.onCancel,
     this.onAmend,
+    this.onDelete,
     this.error,
     this.extraActions = const <Widget>[],
   });
@@ -39,6 +40,10 @@ class CommandBarView extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback? onCancel;
   final VoidCallback? onAmend;
+
+  /// Permanently deletes a saved draft. Offered only on a saved draft
+  /// (docStatus 0 with a name); null suppresses the action.
+  final VoidCallback? onDelete;
   final String? error;
 
   /// Host-contributed action buttons (e.g. document conversion), rendered after
@@ -54,7 +59,7 @@ class CommandBarView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isPhone = Breakpoint.of(context).isPhone;
-    final lifecycle = _lifecycleActions();
+    final lifecycle = _lifecycleActions(context);
 
     // Nothing to surface (a clean draft with no actions and no status) — don't
     // occupy the pinned slot with an empty bar. Purely presentational; no
@@ -107,7 +112,7 @@ class CommandBarView extends StatelessWidget {
   /// The built-in lifecycle buttons for the current docStatus. Gating preserved
   /// verbatim from the original bar — do not change these conditions without
   /// matching the engine's transition rules.
-  List<Widget> _lifecycleActions() {
+  List<Widget> _lifecycleActions(BuildContext context) {
     final widgets = <Widget>[];
     if (_isDraft) {
       if (isDirty) {
@@ -116,6 +121,16 @@ class CommandBarView extends StatelessWidget {
       if (isSubmittable && documentName != null && !isDirty) {
         widgets.add(
             FilledButton(onPressed: onSubmit, child: const Text('Submit')));
+      }
+      // Destructive: delete a saved draft. Only a persisted draft can be
+      // deleted (a brand-new unsaved form has nothing to remove).
+      if (documentName != null && onDelete != null) {
+        widgets.add(TextButton(
+          onPressed: onDelete,
+          style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error),
+          child: const Text('Delete'),
+        ));
       }
     }
     if (_isSubmitted && onCancel != null) {
