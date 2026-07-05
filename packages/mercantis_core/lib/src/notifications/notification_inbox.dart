@@ -137,8 +137,29 @@ class NotificationInbox {
     return rows.map(_itemFromRow).toList();
   }
 
-  /// Unread count across an operator's audience (global + addressed).
-  Future<int> unreadCountForAudience({required List<String> recipients}) async {
+  /// Unread count across an operator's audience. By default this is the union
+  /// of the global feed and anything addressed to the audience. Pass
+  /// [includeGlobal] `false` to count only messages **addressed to** the
+  /// audience — exactly the subset [markAllReadForAudience] can clear. A bell
+  /// badge should use `includeGlobal: false` so "mark all read" can always zero
+  /// it: broadcasts have a single shared `read_at` and are deliberately left
+  /// alone (see [markAllReadForAudience]), so counting them would leave the
+  /// badge permanently non-zero for every operator.
+  Future<int> unreadCountForAudience({
+    required List<String> recipients,
+    bool includeGlobal = true,
+  }) async {
+    if (!includeGlobal) {
+      final keys = _addressedKeys(recipients);
+      if (keys.isEmpty) return 0;
+      final placeholders = List.filled(keys.length, '?').join(', ');
+      final rows = await _db.rawQuery(
+        'SELECT COUNT(*) AS c FROM notification_log '
+        'WHERE recipient IN ($placeholders) AND read_at IS NULL',
+        keys,
+      );
+      return (rows.first['c'] as int?) ?? 0;
+    }
     final (clause, args) = _audienceClause(recipients);
     final rows = await _db.rawQuery(
       'SELECT COUNT(*) AS c FROM notification_log '
@@ -158,10 +179,7 @@ class NotificationInbox {
     required List<String> recipients,
     DateTime? at,
   }) async {
-    final keys = {
-      for (final r in recipients)
-        if (r.trim().isNotEmpty) r,
-    }.toList();
+    final keys = _addressedKeys(recipients);
     if (keys.isEmpty) return;
     final placeholders = List.filled(keys.length, '?').join(', ');
     await _db.update(
@@ -172,14 +190,17 @@ class NotificationInbox {
     );
   }
 
+  /// The audience's recipient keys with blanks and duplicates dropped.
+  List<String> _addressedKeys(List<String> recipients) => {
+        for (final r in recipients)
+          if (r.trim().isNotEmpty) r,
+      }.toList();
+
   /// Builds the `recipient IS NULL OR recipient IN (?, …)` predicate (and its
   /// args) for an audience. Blank/duplicate keys are dropped; an empty audience
   /// yields just the global `recipient IS NULL`.
   (String, List<Object?>) _audienceClause(List<String> recipients) {
-    final keys = {
-      for (final r in recipients)
-        if (r.trim().isNotEmpty) r,
-    }.toList();
+    final keys = _addressedKeys(recipients);
     if (keys.isEmpty) return ('recipient IS NULL', const <Object?>[]);
     final placeholders = List.filled(keys.length, '?').join(', ');
     return ('recipient IS NULL OR recipient IN ($placeholders)', keys);

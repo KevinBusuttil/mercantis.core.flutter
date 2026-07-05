@@ -24,6 +24,7 @@ class AppNavigationRegistry {
     String? initialLocation,
     String brandLabel = 'Mercantis',
     String brandMark = 'M',
+    String? notificationsLocation,
   }) {
     final initial = initialLocation ?? _initialLocation();
     return GoRouter(
@@ -34,6 +35,7 @@ class AppNavigationRegistry {
             location: state.matchedLocation,
             brandLabel: brandLabel,
             brandMark: brandMark,
+            notificationsLocation: notificationsLocation,
             child: child,
           ),
           routes: [

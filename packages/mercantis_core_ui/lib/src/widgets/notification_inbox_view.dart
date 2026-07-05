@@ -3,24 +3,53 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
 import '../providers/notification_providers.dart';
+import '../workspace/current_user.dart';
 
 /// Reader UI for the in-app notification inbox (ADR-048): lists a recipient's
 /// notifications with unread styling, tap-to-mark-read, swipe-to-delete, and a
 /// "Mark all read" action. Composable — drop into a screen or pane.
 class NotificationInboxView extends ConsumerWidget {
-  const NotificationInboxView({super.key, this.recipient});
+  const NotificationInboxView({super.key, this.recipient})
+      : _forCurrentUser = false;
 
-  /// Whose feed to show. `null` = the global (unaddressed) feed.
+  /// Shows the current operator's audience inbox: the global feed plus anything
+  /// addressed to their id / email / roles. Prefer this over a single
+  /// [recipient] for a logged-in operator's inbox.
+  const NotificationInboxView.forCurrentUser({super.key})
+      : recipient = null,
+        _forCurrentUser = true;
+
+  /// Whose feed to show. `null` = the global (unaddressed) feed. Ignored when
+  /// [_forCurrentUser] is set.
   final String? recipient;
+  final bool _forCurrentUser;
 
   void _refresh(WidgetRef ref) {
-    ref.invalidate(notificationInboxItemsProvider(recipient));
-    ref.invalidate(notificationUnreadCountProvider(recipient));
+    if (_forCurrentUser) {
+      ref.invalidate(notificationInboxForCurrentUserProvider);
+      ref.invalidate(notificationUnreadForCurrentUserProvider);
+    } else {
+      ref.invalidate(notificationInboxItemsProvider(recipient));
+      ref.invalidate(notificationUnreadCountProvider(recipient));
+    }
+  }
+
+  Future<void> _markAllRead(WidgetRef ref) async {
+    final inbox = await ref.read(notificationInboxProvider.future);
+    if (_forCurrentUser) {
+      await inbox.markAllReadForAudience(
+          recipients: currentUserRecipients(ref.read(currentUserProvider)));
+    } else {
+      await inbox.markAllRead(recipient: recipient);
+    }
+    _refresh(ref);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(notificationInboxItemsProvider(recipient));
+    final async = _forCurrentUser
+        ? ref.watch(notificationInboxForCurrentUserProvider)
+        : ref.watch(notificationInboxItemsProvider(recipient));
     return Column(
       children: [
         Padding(
@@ -32,11 +61,7 @@ class NotificationInboxView extends ConsumerWidget {
               TextButton.icon(
                 icon: const Icon(Icons.done_all, size: 18),
                 label: const Text('Mark all read'),
-                onPressed: () async {
-                  final inbox = await ref.read(notificationInboxProvider.future);
-                  await inbox.markAllRead(recipient: recipient);
-                  _refresh(ref);
-                },
+                onPressed: () => _markAllRead(ref),
               ),
             ],
           ),
