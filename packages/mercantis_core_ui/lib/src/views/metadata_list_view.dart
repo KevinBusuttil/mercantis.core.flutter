@@ -221,7 +221,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
 
   List<Widget> _treeActions(DocType type) => [
         Padding(
-          padding: const EdgeInsets.only(top: 12, right: MercantisSpacing.sm),
+          padding: const EdgeInsets.only(top: 12, right: 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
