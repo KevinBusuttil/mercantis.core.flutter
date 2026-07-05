@@ -1,16 +1,19 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:mercantis_core_ui/mercantis_core_ui.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-/// The shared "documents changed" seam: MetadataListView's cached doc list
-/// re-fetches when documentRevisionProvider(<docType>) is bumped, so a mutation
-/// elsewhere (a form's delete/save) no longer leaves the list stale.
+/// The shared "documents changed" seam: [metadataDocsProvider] re-fetches when
+/// documentRevisionProvider(<docType>) is bumped, so a mutation elsewhere (a
+/// form's delete/save) no longer leaves the list stale.
+///
+/// Driven through a [ProviderContainer] rather than a widget: the provider's
+/// list runs sqflite queries, and those futures settle in the real async zone a
+/// plain `test()` runs in — not the fake-async zone `testWidgets` installs,
+/// where they hang.
 void main() {
   setUpAll(sqfliteFfiInit);
 
@@ -39,60 +42,50 @@ void main() {
 
   tearDown(() async => database.close());
 
-  Future<void> drain(WidgetTester tester) async {
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
-    }
+  ProviderContainer containerForDb() {
+    final container = ProviderContainer(overrides: [
+      mercantisDatabaseProvider.overrideWith((_) => Future.value(database)),
+    ]);
+    addTearDown(container.dispose);
+    return container;
   }
 
-  testWidgets('bumping the revision re-fetches the list', (tester) async {
-    tester.view.physicalSize = const Size(400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+  test('bumping the revision re-fetches the list', () async {
+    final container = containerForDb();
+    const args = MetadataListArgs('Widget', null);
 
-    final router = GoRouter(
-      initialLocation: '/list/Widget',
-      routes: [
-        GoRoute(
-          path: '/list/:docType',
-          builder: (c, s) =>
-              MetadataListView(docTypeName: s.pathParameters['docType']!),
-        ),
-        GoRoute(
-          path: '/form/:docType/:name',
-          builder: (c, s) => const Scaffold(body: Text('FORM')),
-        ),
-      ],
-    );
-
-    // A plain ProviderScope (owned by the tree) so its provider futures run in
-    // the tester's async zone; bump via the tree's container.
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        mercantisDatabaseProvider.overrideWith((_) => Future.value(database)),
-      ],
-      child: MaterialApp.router(routerConfig: router),
-    ));
-    await drain(tester);
-
-    // Initial list holds the seeded record only.
-    expect(find.text('Alpha'), findsOneWidget);
-    expect(find.text('Bravo'), findsNothing);
+    // Initial fetch holds the seeded record only.
+    final first = await container.read(metadataDocsProvider(args).future);
+    expect(first.map((d) => d.payload['title']), ['Alpha']);
 
     // A record appears in the store (as a form's write would leave it)...
     await _seed(database.db, 'DOC-2', 'Bravo');
-    await drain(tester);
-    // ...but the cached list hasn't noticed yet.
-    expect(find.text('Bravo'), findsNothing);
 
-    // Bumping the shared seam makes the list re-fetch and show it.
-    final container = ProviderScope.containerOf(
-        tester.element(find.byType(MetadataListView)));
+    // ...but the cached provider hasn't noticed — same list on a fresh read.
+    final cached = await container.read(metadataDocsProvider(args).future);
+    expect(cached.map((d) => d.payload['title']), ['Alpha']);
+
+    // Bumping the shared seam invalidates the list, so it re-fetches and shows
+    // the new record.
     container.read(documentRevisionProvider('Widget').notifier).bump();
-    await drain(tester);
-    expect(find.text('Bravo'), findsOneWidget);
+    final refetched = await container.read(metadataDocsProvider(args).future);
+    expect(
+      refetched.map((d) => d.payload['title']).toSet(),
+      {'Alpha', 'Bravo'},
+    );
+  });
+
+  test('a bump for another DocType leaves this list cached', () async {
+    final container = containerForDb();
+    const args = MetadataListArgs('Widget', null);
+
+    await container.read(metadataDocsProvider(args).future);
+    await _seed(database.db, 'DOC-2', 'Bravo');
+
+    // Bumping an unrelated DocType must not invalidate the Widget list.
+    container.read(documentRevisionProvider('Gadget').notifier).bump();
+    final still = await container.read(metadataDocsProvider(args).future);
+    expect(still.map((d) => d.payload['title']), ['Alpha']);
   });
 
   test('the revision counter is independent per DocType', () {
