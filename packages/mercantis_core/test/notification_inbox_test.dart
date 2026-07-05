@@ -167,12 +167,18 @@ void main() {
           1); // global only
     });
 
-    test('markAllReadForAudience clears global + addressed, leaves others',
+    test('markAllReadForAudience clears addressed rows but not shared broadcasts',
         () async {
       await inbox.markAllReadForAudience(recipients: ['alice']);
-      expect(await inbox.unreadCountForAudience(recipients: ['alice']), 0);
-      expect(await inbox.unreadCount(recipient: 'bob'), 1); // untouched
-      expect(await inbox.unreadCount(recipient: 'Manager'), 1); // untouched
+      // Alice's addressed message is read...
+      expect(await inbox.unreadCount(recipient: 'alice'), 0);
+      // ...but the shared broadcast is not — its read_at is global, so clearing
+      // it here would mark it read for every operator. Others untouched.
+      expect(await inbox.unreadCount(recipient: null), 1);
+      expect(await inbox.unreadCount(recipient: 'bob'), 1);
+      expect(await inbox.unreadCount(recipient: 'Manager'), 1);
+      // The audience count therefore still includes the unread broadcast.
+      expect(await inbox.unreadCountForAudience(recipients: ['alice']), 1);
     });
   });
 

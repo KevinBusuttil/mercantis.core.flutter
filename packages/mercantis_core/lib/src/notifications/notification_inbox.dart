@@ -148,17 +148,27 @@ class NotificationInbox {
     return (rows.first['c'] as int?) ?? 0;
   }
 
-  /// Mark every unread entry across an operator's audience read.
+  /// Mark unread entries **addressed to** this audience read. Broadcast (global,
+  /// `recipient IS NULL`) rows are intentionally left alone: their read state is
+  /// a single shared `read_at`, so clearing them here would mark them read for
+  /// every operator. Per-operator broadcast read state needs a per-recipient
+  /// read-receipt table (a follow-up); until then broadcasts are cleared only by
+  /// the explicit global [markAllRead].
   Future<void> markAllReadForAudience({
     required List<String> recipients,
     DateTime? at,
   }) async {
-    final (clause, args) = _audienceClause(recipients);
+    final keys = {
+      for (final r in recipients)
+        if (r.trim().isNotEmpty) r,
+    }.toList();
+    if (keys.isEmpty) return;
+    final placeholders = List.filled(keys.length, '?').join(', ');
     await _db.update(
       'notification_log',
       {'read_at': (at ?? DateTime.now()).millisecondsSinceEpoch},
-      where: '($clause) AND read_at IS NULL',
-      whereArgs: args,
+      where: 'recipient IN ($placeholders) AND read_at IS NULL',
+      whereArgs: keys,
     );
   }
 
