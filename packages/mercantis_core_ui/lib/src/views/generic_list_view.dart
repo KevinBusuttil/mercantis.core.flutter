@@ -7,6 +7,7 @@ import '../providers/core_providers.dart';
 import '../theme/atlas/atlas.dart';
 import 'record_tree_view.dart';
 import 'record_view_mode.dart';
+import 'record_view_mode_toggle.dart';
 
 final _listProvider =
     FutureProvider.family<List<Document>, String>((ref, docTypeName) async {
@@ -88,7 +89,7 @@ class _GenericListViewState extends ConsumerState<GenericListView> {
         data: (docs) => Column(
           children: [
             if (supportsTree)
-              _ViewModeToggle(mode: mode, onChanged: _setViewMode),
+              RecordViewModeToggle(mode: mode, onChanged: _setViewMode),
             Expanded(
               child: mode == RecordViewMode.tree && docType != null
                   ? RecordTreeView(
@@ -138,45 +139,6 @@ class _GenericListViewState extends ConsumerState<GenericListView> {
           ),
         );
       },
-    );
-  }
-}
-
-/// List ↔ Tree switcher shown only for hierarchical DocTypes.
-class _ViewModeToggle extends StatelessWidget {
-  const _ViewModeToggle({required this.mode, required this.onChanged});
-
-  final RecordViewMode mode;
-  final ValueChanged<RecordViewMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: SegmentedButton<RecordViewMode>(
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: RecordViewMode.list,
-              icon: Icon(Icons.view_list_outlined),
-              label: Text('List'),
-            ),
-            ButtonSegment(
-              value: RecordViewMode.tree,
-              icon: Icon(Icons.account_tree_outlined),
-              label: Text('Tree'),
-            ),
-          ],
-          selected: {
-            mode == RecordViewMode.tree
-                ? RecordViewMode.tree
-                : RecordViewMode.list
-          },
-          onSelectionChanged: (s) => onChanged(s.first),
-        ),
-      ),
     );
   }
 }

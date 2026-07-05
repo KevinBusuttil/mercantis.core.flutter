@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../metadata/metadata_display.dart';
 import '../panes/document_list_pane.dart';
 import '../panes/responsive_split.dart';
@@ -11,6 +12,9 @@ import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
 import '../widgets/search/global_search.dart';
 import 'generic_form_view.dart';
+import 'record_tree_view.dart';
+import 'record_view_mode.dart';
+import 'record_view_mode_toggle.dart';
 
 final _docsProvider =
     FutureProvider.family<List<Document>, _ListArgs>((ref, args) async {
@@ -91,6 +95,39 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   String _query = '';
   String _statusFilter = 'all';
 
+  /// List ↔ Tree choice for hierarchical DocTypes. Persisted per-DocType under
+  /// the same key the studio [GenericListView] uses, so the choice is shared and
+  /// sticks across launches. Ignored (always list) for non-tree DocTypes.
+  RecordViewMode _viewMode = RecordViewMode.list;
+  String get _viewModeKey => 'core.record_view_mode.${widget.docTypeName}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadViewMode();
+  }
+
+  Future<void> _loadViewMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = RecordViewMode.fromName(prefs.getString(_viewModeKey));
+      if (!mounted || saved == null) return;
+      setState(() => _viewMode = saved);
+    } catch (_) {
+      // Prefs unavailable (e.g. a widget test without a mock) — keep the default.
+    }
+  }
+
+  Future<void> _setViewMode(RecordViewMode mode) async {
+    setState(() => _viewMode = mode);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_viewModeKey, mode.name);
+    } catch (_) {
+      // Best-effort persistence; the in-session choice still applies.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final docsAsync = ref.watch(_docsProvider(
@@ -131,7 +168,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
     BuildContext context, DocType type, List<Document> docs, Breakpoint bp,
   ) {
     final filtered = _applyFilters(docs);
-    final list = _buildList(type, filtered);
+    final list = _buildCollection(type, filtered);
     if (bp.isPhone) return Scaffold(body: list);
 
     final selected = _pickSelected(filtered);
@@ -146,6 +183,73 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
     return Scaffold(
       body: ResponsiveSplit(list: list, detail: detail),
     );
+  }
+
+  /// The collection region: the [DocumentListPane] for flat DocTypes, or — for
+  /// hierarchical (`isTree`) DocTypes — a List/Tree toggle above either the pane
+  /// or a [RecordTreeView]. Used identically on phone and in the desktop split.
+  Widget _buildCollection(DocType type, List<Document> docs) {
+    if (!type.isTree) return _buildList(type, docs);
+    final tree = _viewMode == RecordViewMode.tree;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: RecordViewModeToggle(
+                  mode: _viewMode, onChanged: _setViewMode),
+            ),
+            // Tree mode replaces the DocumentListPane, which owns the new /
+            // import-export / phone-search actions — surface them here so those
+            // controls aren't lost until the user switches back to List.
+            if (tree) ..._treeActions(type),
+          ],
+        ),
+        Expanded(
+          child: tree
+              ? RecordTreeView(
+                  docType: type,
+                  documents: docs,
+                  selectedDocumentId: widget.selectedId,
+                  onSelect: (d) => _openRecord(type, d.id),
+                )
+              : _buildList(type, docs),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _treeActions(DocType type) => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, right: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (Breakpoint.of(context).isPhone)
+                IconButton(
+                  icon: const Icon(Icons.manage_search),
+                  tooltip: 'Search everything',
+                  onPressed: () => showGlobalSearch(context),
+                ),
+              ImportExportMenu(docType: type.id, onChanged: _invalidateDocs),
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New ${type.name}',
+                onPressed: () => _newRecord(type),
+              ),
+            ],
+          ),
+        ),
+      ];
+
+  /// Open a record — push the form on phone, or sync the selection into the
+  /// route (`?selected=`) so the detail pane updates in the desktop split.
+  void _openRecord(DocType type, String id) {
+    if (Breakpoint.of(context).isPhone) {
+      context.go('/form/${type.id}/$id');
+    } else {
+      context.go('/list/${type.id}?selected=${Uri.encodeQueryComponent(id)}');
+    }
   }
 
   Widget _buildList(DocType type, List<Document> docs) {
@@ -193,18 +297,11 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
           : const [],
       rows: rows,
       selectedId: widget.selectedId,
-      onRowTap: (r) {
-        if (Breakpoint.of(context).isPhone) {
-          context.go('/form/${type.id}/${r.id}');
-        } else {
-          // Sync the selection into the route so it survives refresh and is
-          // deep-linkable; the query change rebuilds this view with the new
-          // selectedId (local filter state persists — same route page key).
-          context.go(
-              '/list/${type.id}?selected=${Uri.encodeQueryComponent(r.id)}');
-        }
-      },
-      onNew: () => context.go('/form/${type.id}/new'),
+      // Sync the selection into the route so it survives refresh and is
+      // deep-linkable; the query change rebuilds this view with the new
+      // selectedId (local filter state persists — same route page key).
+      onRowTap: (r) => _openRecord(type, r.id),
+      onNew: () => _newRecord(type),
       newLabel: 'New ${type.name}',
       trailingActions: [
         // Phones have no navigation-rail search button, and this pane's own
@@ -216,15 +313,16 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
             tooltip: 'Search everything',
             onPressed: () => showGlobalSearch(context),
           ),
-        ImportExportMenu(
-          docType: type.id,
-          onChanged: () => ref.invalidate(
-            _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
-          ),
-        ),
+        ImportExportMenu(docType: type.id, onChanged: _invalidateDocs),
       ],
     );
   }
+
+  void _newRecord(DocType type) => context.go('/form/${type.id}/new');
+
+  void _invalidateDocs() => ref.invalidate(
+        _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
+      );
 
   Widget _emptyDetail() => const EmptyState(
         title: 'Nothing selected',
