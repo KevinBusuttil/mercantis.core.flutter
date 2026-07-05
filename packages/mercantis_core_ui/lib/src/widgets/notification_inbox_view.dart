@@ -37,10 +37,27 @@ class NotificationInboxView extends ConsumerWidget {
   Future<void> _markAllRead(WidgetRef ref) async {
     final inbox = await ref.read(notificationInboxProvider.future);
     if (_forCurrentUser) {
+      final user = ref.read(currentUserProvider);
       await inbox.markAllReadForAudience(
-          recipients: currentUserRecipients(ref.read(currentUserProvider)));
+        recipients: currentUserRecipients(user),
+        viewerId: user.id,
+      );
     } else {
       await inbox.markAllRead(recipient: recipient);
+    }
+    _refresh(ref);
+  }
+
+  /// Mark one tapped entry read. In the audience inbox a broadcast (no
+  /// recipient) is receipted for this operator only, so it doesn't clear for
+  /// everyone; everything else marks its own `read_at`.
+  Future<void> _markRead(WidgetRef ref, NotificationInboxItem item) async {
+    final inbox = await ref.read(notificationInboxProvider.future);
+    if (_forCurrentUser && item.recipient == null) {
+      await inbox.markBroadcastRead(item.id,
+          viewerId: ref.read(currentUserProvider).id);
+    } else {
+      await inbox.markRead(item.id);
     }
     _refresh(ref);
   }
@@ -125,13 +142,7 @@ class NotificationInboxView extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
         ),
         isThreeLine: true,
-        onTap: item.isRead
-            ? null
-            : () async {
-                final inbox = await ref.read(notificationInboxProvider.future);
-                await inbox.markRead(item.id);
-                _refresh(ref);
-              },
+        onTap: item.isRead ? null : () => _markRead(ref, item),
       ),
     );
   }

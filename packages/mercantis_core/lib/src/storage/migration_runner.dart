@@ -9,6 +9,7 @@ class MigrationRunner {
     if (version < 4) await _v4(db);
     if (version < 5) await _v5(db);
     if (version < 6) await _v6(db);
+    if (version < 7) await _v7(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -281,5 +282,28 @@ class MigrationRunner {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_posting_batches_status ON posting_batches (status)');
     await db.update('schema_version', {'version': 6});
+  }
+
+  /// v7: per-operator broadcast read receipts (ADR-048 follow-up).
+  ///
+  /// A broadcast notification (`notification_log.recipient IS NULL`) is shared
+  /// across operators and has a single `read_at`, so marking it read for one
+  /// operator would mark it read for all. This table records, per (broadcast,
+  /// viewer), when a specific operator read a broadcast — letting the audience
+  /// inbox resolve broadcast read state per operator without touching the shared
+  /// column. Addressed notifications keep using `read_at`. `viewer_id` is the
+  /// operator's stable user id; `read_at` is epoch millis.
+  static Future<void> _v7(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notification_broadcast_receipt (
+        notification_id TEXT NOT NULL,
+        viewer_id TEXT NOT NULL,
+        read_at INTEGER NOT NULL,
+        PRIMARY KEY (notification_id, viewer_id)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_broadcast_receipt_viewer ON notification_broadcast_receipt (viewer_id)');
+    await db.update('schema_version', {'version': 7});
   }
 }
