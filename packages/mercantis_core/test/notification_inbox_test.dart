@@ -129,6 +129,53 @@ void main() {
     });
   });
 
+  group('audience queries (global + addressed)', () {
+    setUp(() async {
+      await log.write(entry(id: 'g', recipient: null, subject: 'Broadcast'));
+      await log.write(entry(id: 'a', recipient: 'alice', subject: 'Hi Alice'));
+      await log.write(
+          entry(id: 'm', recipient: 'Manager', subject: 'For managers'));
+      await log.write(entry(id: 'b', recipient: 'bob', subject: 'Hi Bob'));
+    });
+
+    test('entriesForAudience unions the global feed with addressed keys',
+        () async {
+      final items =
+          await inbox.entriesForAudience(recipients: ['alice', 'Manager']);
+      expect(items.map((e) => e.subject).toSet(),
+          {'Broadcast', 'Hi Alice', 'For managers'});
+      expect(items.map((e) => e.subject), isNot(contains('Hi Bob')));
+    });
+
+    test('an empty audience degrades to the global feed', () async {
+      final items = await inbox.entriesForAudience(recipients: const []);
+      expect(items.map((e) => e.subject), ['Broadcast']);
+    });
+
+    test('blank + duplicate keys are ignored', () async {
+      final items = await inbox
+          .entriesForAudience(recipients: ['alice', '', 'alice', '  ']);
+      expect(items.map((e) => e.subject).toSet(), {'Broadcast', 'Hi Alice'});
+    });
+
+    test('unreadCountForAudience counts global + addressed', () async {
+      expect(
+          await inbox
+              .unreadCountForAudience(recipients: ['alice', 'Manager']),
+          3);
+      expect(await inbox.unreadCountForAudience(recipients: const []),
+          1); // global only
+    });
+
+    test('markAllReadForAudience clears global + addressed, leaves others',
+        () async {
+      await inbox.markAllReadForAudience(recipients: ['alice']);
+      expect(await inbox.unreadCountForAudience(recipients: ['alice']), 0);
+      expect(await inbox.unreadCount(recipient: 'bob'), 1); // untouched
+      expect(await inbox.unreadCount(recipient: 'Manager'), 1); // untouched
+    });
+  });
+
   test('delete removes an inbox item', () async {
     await log.write(entry(id: 'a', recipient: 'alice'));
     await inbox.delete('a');

@@ -108,6 +108,73 @@ class NotificationInbox {
     }
   }
 
+  // ── Audience queries ──────────────────────────────────────────────────────
+  // An operator's inbox is the global feed (no recipient) PLUS anything
+  // addressed to any of their recipient keys — their user id, email, or roles.
+  // The single-recipient methods above do an exact match; these union the
+  // global feed with an `IN (…)` over the audience so a logged-in operator sees
+  // both broadcasts and messages addressed to them, in one pass.
+
+  /// Notifications visible to an operator whose recipient keys are [recipients]
+  /// (id / email / roles): the global feed plus anything addressed to any key,
+  /// newest first. An empty [recipients] degrades to the global feed.
+  Future<List<NotificationInboxItem>> entriesForAudience({
+    required List<String> recipients,
+    bool unreadOnly = false,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final (clause, args) = _audienceClause(recipients);
+    final where = unreadOnly ? '($clause) AND read_at IS NULL' : clause;
+    final rows = await _db.query(
+      'notification_log',
+      where: where,
+      whereArgs: args,
+      orderBy: 'emitted_at DESC, id DESC',
+      limit: limit,
+      offset: offset < 0 ? 0 : offset,
+    );
+    return rows.map(_itemFromRow).toList();
+  }
+
+  /// Unread count across an operator's audience (global + addressed).
+  Future<int> unreadCountForAudience({required List<String> recipients}) async {
+    final (clause, args) = _audienceClause(recipients);
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS c FROM notification_log '
+      'WHERE ($clause) AND read_at IS NULL',
+      args,
+    );
+    return (rows.first['c'] as int?) ?? 0;
+  }
+
+  /// Mark every unread entry across an operator's audience read.
+  Future<void> markAllReadForAudience({
+    required List<String> recipients,
+    DateTime? at,
+  }) async {
+    final (clause, args) = _audienceClause(recipients);
+    await _db.update(
+      'notification_log',
+      {'read_at': (at ?? DateTime.now()).millisecondsSinceEpoch},
+      where: '($clause) AND read_at IS NULL',
+      whereArgs: args,
+    );
+  }
+
+  /// Builds the `recipient IS NULL OR recipient IN (?, …)` predicate (and its
+  /// args) for an audience. Blank/duplicate keys are dropped; an empty audience
+  /// yields just the global `recipient IS NULL`.
+  (String, List<Object?>) _audienceClause(List<String> recipients) {
+    final keys = {
+      for (final r in recipients)
+        if (r.trim().isNotEmpty) r,
+    }.toList();
+    if (keys.isEmpty) return ('recipient IS NULL', const <Object?>[]);
+    final placeholders = List.filled(keys.length, '?').join(', ');
+    return ('recipient IS NULL OR recipient IN ($placeholders)', keys);
+  }
+
   /// Hard-delete an inbox item (e.g. "swipe to delete"). The audit log remains
   /// the canonical record of what was sent.
   Future<void> delete(String id) async {
