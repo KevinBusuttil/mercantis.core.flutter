@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../metadata/metadata_display.dart';
 import '../providers/core_providers.dart';
+import '../providers/document_revision_provider.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
 import '../theme/atlas/atlas.dart';
@@ -318,6 +319,11 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
 
   Document _emptyDoc() => Document(id: '', docType: widget.docTypeName);
 
+  /// Wake any cached list of this DocType so it re-fetches after a write —
+  /// the shared "documents changed" seam (see [documentRevisionProvider]).
+  void _bumpRevision() =>
+      ref.read(documentRevisionProvider(widget.docTypeName).notifier).bump();
+
   Future<void> _save(
       DocumentEngine engine, Document current, ResolvedMeta? meta) async {
     // Local pre-flight: surface required/format errors inline before hitting
@@ -341,6 +347,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
         _childErrors.clear();
       });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
+      _bumpRevision();
     } catch (e) {
       setState(() {
         if (e is DocumentEngineError) {
@@ -388,6 +395,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
         _childErrors.clear();
       });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
+      _bumpRevision();
     } catch (e) {
       setState(() {
         if (e is DocumentEngineError) {
@@ -421,6 +429,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     try {
       await engine.cancel(current, _userRoles);
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
+      _bumpRevision();
     } catch (e) {
       setState(() =>
           _error = e is DocumentEngineError ? e.humanMessage : e.toString());
@@ -438,6 +447,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     });
     try {
       final draft = await engine.amend(current, _userRoles);
+      _bumpRevision();
       if (!mounted) return;
       context.go('/form/${widget.docTypeName}/${draft.id}');
     } catch (e) {
@@ -469,6 +479,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       // a stale list row) re-fetches — and can't resurrect it from a cached,
       // non-empty-id Document that a save would re-insert.
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
+      _bumpRevision();
       if (!mounted) return;
       context.go('/list/${widget.docTypeName}');
     } catch (e) {

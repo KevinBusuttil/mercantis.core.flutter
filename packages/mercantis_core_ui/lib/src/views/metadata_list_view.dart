@@ -7,6 +7,7 @@ import '../metadata/metadata_display.dart';
 import '../panes/document_list_pane.dart';
 import '../panes/responsive_split.dart';
 import '../providers/core_providers.dart';
+import '../providers/document_revision_provider.dart';
 import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
@@ -18,6 +19,10 @@ import 'record_view_mode_toggle.dart';
 
 final _docsProvider =
     FutureProvider.family<List<Document>, _ListArgs>((ref, args) async {
+  // Re-fetch whenever a document of this DocType is written (create / update /
+  // submit / cancel / delete) — the shared "documents changed" seam a form
+  // bumps after a mutation, since this provider is private to the view.
+  ref.watch(documentRevisionProvider(args.docType));
   final engine = await ref.watch(documentEngineProvider.future);
   return engine.list(
     args.docType,

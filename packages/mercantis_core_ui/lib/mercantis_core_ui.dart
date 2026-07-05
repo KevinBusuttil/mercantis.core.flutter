@@ -9,6 +9,7 @@ export 'src/theme/atlas/atlas.dart';
 
 // Providers
 export 'src/providers/core_providers.dart';
+export 'src/providers/document_revision_provider.dart';
 export 'src/providers/attachment_providers.dart';
 export 'src/providers/import_export_providers.dart';
 export 'src/providers/notification_providers.dart';
