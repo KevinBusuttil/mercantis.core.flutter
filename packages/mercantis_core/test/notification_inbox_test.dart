@@ -202,6 +202,84 @@ void main() {
     });
   });
 
+  group('broadcast read receipts (per-viewer)', () {
+    setUp(() async {
+      await log.write(entry(id: 'g', recipient: null, subject: 'Broadcast'));
+      await log.write(entry(id: 'a', recipient: 'alice', subject: 'Hi Alice'));
+    });
+
+    test('markBroadcastRead clears a broadcast for one viewer only', () async {
+      await inbox.markBroadcastRead('g', viewerId: 'alice');
+
+      // Alice sees the broadcast read; bob still sees it unread.
+      final alice =
+          await inbox.entriesForAudience(recipients: ['alice'], viewerId: 'alice');
+      expect(alice.firstWhere((e) => e.id == 'g').isRead, isTrue);
+      final bob =
+          await inbox.entriesForAudience(recipients: ['bob'], viewerId: 'bob');
+      expect(bob.firstWhere((e) => e.id == 'g').isRead, isFalse);
+
+      // The shared column is never touched, so exact-match reads are unaffected.
+      expect(await inbox.unreadCount(recipient: null), 1);
+    });
+
+    test('markBroadcastRead is idempotent, keeping the first read time',
+        () async {
+      await inbox.markBroadcastRead('g', viewerId: 'alice', at: DateTime(2026, 3, 1));
+      await inbox.markBroadcastRead('g', viewerId: 'alice', at: DateTime(2026, 4, 1));
+      final item = (await inbox.entriesForAudience(
+              recipients: ['alice'], viewerId: 'alice'))
+          .firstWhere((e) => e.id == 'g');
+      expect(item.readAt, DateTime(2026, 3, 1));
+    });
+
+    test('unreadCountForAudience(viewerId) counts a broadcast until receipted',
+        () async {
+      // Broadcast + Hi Alice both unread for alice.
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['alice'], viewerId: 'alice'),
+          2);
+      await inbox.markBroadcastRead('g', viewerId: 'alice');
+      // Only the broadcast cleared for alice...
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['alice'], viewerId: 'alice'),
+          1);
+      // ...but bob's audience still counts the broadcast.
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['bob'], viewerId: 'bob'),
+          1);
+    });
+
+    test('markAllReadForAudience(viewerId) zeroes the viewer without leaking',
+        () async {
+      await inbox.markAllReadForAudience(recipients: ['alice'], viewerId: 'alice');
+      // Alice's whole audience (broadcast + addressed) is clear...
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['alice'], viewerId: 'alice'),
+          0);
+      // ...but the shared broadcast read_at is untouched, so bob still sees it.
+      expect(await inbox.unreadCount(recipient: null), 1);
+      expect(
+          await inbox.unreadCountForAudience(
+              recipients: ['bob'], viewerId: 'bob'),
+          1);
+    });
+
+    test('deleting a broadcast drops its receipts', () async {
+      await inbox.markBroadcastRead('g', viewerId: 'alice');
+      await inbox.delete('g');
+      // Re-inserting the same id must not resurrect the old receipt.
+      await log.write(entry(id: 'g', recipient: null, subject: 'Broadcast 2'));
+      final alice = await inbox.entriesForAudience(
+          recipients: ['alice'], viewerId: 'alice');
+      expect(alice.firstWhere((e) => e.id == 'g').isRead, isFalse);
+    });
+  });
+
   test('delete removes an inbox item', () async {
     await log.write(entry(id: 'a', recipient: 'alice'));
     await inbox.delete('a');

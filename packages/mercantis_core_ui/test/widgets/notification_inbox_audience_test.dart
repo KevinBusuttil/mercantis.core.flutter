@@ -56,17 +56,27 @@ void main() {
     expect(find.text('Hi Bob'), findsNothing); // someone else
   });
 
-  test('notificationUnreadForCurrentUserProvider badges addressed-only',
+  test('notificationUnreadForCurrentUserProvider badges the whole audience',
       () async {
     final container = ProviderContainer(
         overrides:
             overrides(const CurrentUser(id: 'alice', roles: {'Manager'})));
     addTearDown(container.dispose);
 
-    // The bell badge counts what "Mark all read" can clear: Hi Alice + For
-    // managers = 2. The shared Broadcast is shown in the list but excluded
-    // here — its read state is global, so it never contributes a badge an
-    // operator can't clear.
+    // Broadcast + Hi Alice + For managers = 3. The broadcast counts because
+    // its read state is now per-operator (receipts), so "Mark all read" can
+    // still clear the badge without leaking across operators.
+    expect(
+        await container.read(notificationUnreadForCurrentUserProvider.future),
+        3);
+
+    // Reading the broadcast for this operator drops it from their badge...
+    final inbox = await container.read(notificationInboxProvider.future);
+    final broadcast = (await container
+            .read(notificationInboxForCurrentUserProvider.future))
+        .firstWhere((e) => e.subject == 'Broadcast');
+    await inbox.markBroadcastRead(broadcast.id, viewerId: 'alice');
+    container.invalidate(notificationUnreadForCurrentUserProvider);
     expect(
         await container.read(notificationUnreadForCurrentUserProvider.future),
         2);
