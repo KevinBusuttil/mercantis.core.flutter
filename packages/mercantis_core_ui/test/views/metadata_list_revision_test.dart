@@ -52,11 +52,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer(overrides: [
-      mercantisDatabaseProvider.overrideWith((_) => Future.value(database)),
-    ]);
-    addTearDown(container.dispose);
-
     final router = GoRouter(
       initialLocation: '/list/Widget',
       routes: [
@@ -72,8 +67,12 @@ void main() {
       ],
     );
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
+    // A plain ProviderScope (owned by the tree) so its provider futures run in
+    // the tester's async zone; bump via the tree's container.
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        mercantisDatabaseProvider.overrideWith((_) => Future.value(database)),
+      ],
       child: MaterialApp.router(routerConfig: router),
     ));
     await drain(tester);
@@ -89,6 +88,8 @@ void main() {
     expect(find.text('Bravo'), findsNothing);
 
     // Bumping the shared seam makes the list re-fetch and show it.
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(MetadataListView)));
     container.read(documentRevisionProvider('Widget').notifier).bump();
     await drain(tester);
     expect(find.text('Bravo'), findsOneWidget);
