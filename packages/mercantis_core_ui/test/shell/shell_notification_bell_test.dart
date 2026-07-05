@@ -35,8 +35,12 @@ void main() {
 
   tearDown(() => database.close());
 
-  Widget harness({String? notificationsLocation}) => MediaQuery(
-        data: const MediaQueryData(size: Size(1400, 900), devicePixelRatio: 1),
+  Widget harness({
+    String? notificationsLocation,
+    Size size = const Size(1400, 900),
+  }) =>
+      MediaQuery(
+        data: MediaQueryData(size: size, devicePixelRatio: 1),
         child: ProviderScope(
           overrides: [
             mercantisDatabaseProvider
@@ -111,7 +115,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(harness(notificationsLocation: '/notifications'));
+    await tester.pumpWidget(harness(
+      notificationsLocation: '/notifications',
+      size: const Size(1000, 800),
+    ));
     await tester.pumpAndSettle();
 
     expect(find.byType(NavigationRail), findsOneWidget);
