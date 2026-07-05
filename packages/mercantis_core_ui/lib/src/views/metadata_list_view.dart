@@ -12,6 +12,7 @@ import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
 import '../widgets/search/global_search.dart';
+import 'document_action.dart';
 import 'generic_form_view.dart';
 import 'record_tree_view.dart';
 import 'record_view_mode.dart';
@@ -263,6 +264,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   }
 
   Widget _buildList(DocType type, List<Document> docs) {
+    final registry = ref.read(documentActionRegistryProvider);
     final rows = [
       for (final d in docs)
         DocumentListPaneRow(
@@ -277,6 +279,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
               ? MetadataDisplay.docStatusTone(d.docStatus)
               : null,
           timestamp: MetadataDisplay.timestampFor(type, d),
+          swipeAction: _swipeActionFor(type, d, registry),
         ),
     ];
 
@@ -306,6 +309,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
             ]
           : const [],
       rows: rows,
+      onRefresh: () => _refreshList(type),
       selectedId: widget.selectedId,
       // Sync the selection into the route so it survives refresh and is
       // deep-linkable; the query change rebuilds this view with the new
@@ -333,6 +337,67 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   void _invalidateDocs() => ref.invalidate(
         metadataDocsProvider(MetadataListArgs(widget.docTypeName, widget.filter)),
       );
+
+  /// Pull-to-refresh: reload the list from the store (the same shared
+  /// documents-changed seam a mutation bumps), awaiting the re-fetch so the
+  /// spinner shows until fresh rows are in hand.
+  Future<void> _refreshList(DocType type) async {
+    ref.read(documentRevisionProvider(type.id).notifier).bump();
+    await ref.read(
+      metadataDocsProvider(MetadataListArgs(widget.docTypeName, widget.filter))
+          .future,
+    );
+  }
+
+  /// The swipe accelerator for a row: the record's contextual actions (the same
+  /// ones its command bar offers). One action fires directly; several open a
+  /// quick sheet. No actions → no swipe affordance.
+  RowSwipeAction? _swipeActionFor(
+      DocType type, Document doc, DocumentActionRegistry registry) {
+    final actions = registry.actionsFor(doc, type);
+    if (actions.isEmpty) return null;
+    if (actions.length == 1) {
+      final a = actions.single;
+      return RowSwipeAction(
+        label: a.label,
+        icon: a.icon ?? Icons.bolt_outlined,
+        onTrigger: () => _runRowAction(a, doc),
+      );
+    }
+    return RowSwipeAction(
+      label: 'Actions',
+      icon: Icons.more_horiz,
+      onTrigger: () => _showRowActions(doc, actions),
+    );
+  }
+
+  Future<void> _runRowAction(DocumentAction action, Document doc) async {
+    await action.invoke(context, ref, doc);
+  }
+
+  Future<void> _showRowActions(
+      Document doc, List<DocumentAction> actions) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final a in actions)
+              ListTile(
+                leading: Icon(a.icon ?? Icons.bolt_outlined),
+                title: Text(a.label),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _runRowAction(a, doc);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _emptyDetail() => const EmptyState(
         title: 'Nothing selected',

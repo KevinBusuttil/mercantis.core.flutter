@@ -3,6 +3,23 @@ import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
 import '../widgets/status_chip.dart';
 
+/// A swipe accelerator on a list row: swiping the row reveals [label]/[icon] and,
+/// on release, runs [onTrigger] (the row is never removed — it snaps back). Used
+/// to surface a record's contextual actions without opening it first.
+class RowSwipeAction {
+  const RowSwipeAction({
+    required this.label,
+    required this.icon,
+    required this.onTrigger,
+    this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Future<void> Function() onTrigger;
+  final Color? color;
+}
+
 class DocumentListPaneRow {
   const DocumentListPaneRow({
     required this.id,
@@ -14,6 +31,7 @@ class DocumentListPaneRow {
     this.timestamp,
     this.leading,
     this.metadata = const [],
+    this.swipeAction,
   });
 
   final String id;
@@ -25,6 +43,9 @@ class DocumentListPaneRow {
   final String? timestamp;
   final Widget? leading;
   final List<String> metadata;
+
+  /// Optional swipe-to-act accelerator for this row.
+  final RowSwipeAction? swipeAction;
 }
 
 class DocumentListPane extends StatelessWidget {
@@ -41,6 +62,7 @@ class DocumentListPane extends StatelessWidget {
     this.onNew,
     this.newLabel,
     this.trailingActions = const [],
+    this.onRefresh,
   });
 
   final String title;
@@ -54,6 +76,10 @@ class DocumentListPane extends StatelessWidget {
   final VoidCallback? onNew;
   final String? newLabel;
   final List<Widget> trailingActions;
+
+  /// Pull-to-refresh handler. When set, the list can be pulled down to reload
+  /// (even when empty); the spinner shows until the returned future completes.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -115,26 +141,7 @@ class DocumentListPane extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          Expanded(
-            child: rows.isEmpty
-                ? Center(
-                    child:
-                        Text('No documents', style: theme.textTheme.bodySmall),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: MercantisSpacing.xs),
-                    itemCount: rows.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, indent: 16, endIndent: 16),
-                    itemBuilder: (context, i) {
-                      final row = rows[i];
-                      final selected = row.id == selectedId;
-                      return _Row(
-                          row: row, selected: selected, onTap: onRowTap);
-                    },
-                  ),
-          ),
+          Expanded(child: _listBody(context, theme)),
           if (onNew != null)
             Padding(
               padding: const EdgeInsets.all(MercantisSpacing.lg),
@@ -148,6 +155,71 @@ class DocumentListPane extends StatelessWidget {
       ),
     );
   }
+
+  Widget _listBody(BuildContext context, ThemeData theme) {
+    // Always scrollable when refreshable so a short/empty list can still be
+    // pulled down.
+    final physics = onRefresh != null
+        ? const AlwaysScrollableScrollPhysics()
+        : null;
+    final Widget list = rows.isEmpty
+        ? ListView(
+            physics: physics,
+            children: [
+              const SizedBox(height: 96),
+              Center(
+                child: Text('No documents', style: theme.textTheme.bodySmall),
+              ),
+            ],
+          )
+        : ListView.separated(
+            physics: physics,
+            padding:
+                const EdgeInsets.symmetric(vertical: MercantisSpacing.xs),
+            itemCount: rows.length,
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, indent: 16, endIndent: 16),
+            itemBuilder: (context, i) {
+              final row = rows[i];
+              final tile =
+                  _Row(row: row, selected: row.id == selectedId, onTap: onRowTap);
+              final swipe = row.swipeAction;
+              if (swipe == null) return tile;
+              return Dismissible(
+                key: ValueKey('swipe-${row.id}'),
+                direction: DismissDirection.endToStart,
+                background: _swipeBackground(context, swipe),
+                // Never actually dismiss — run the action and snap back.
+                confirmDismiss: (_) async {
+                  await swipe.onTrigger();
+                  return false;
+                },
+                child: tile,
+              );
+            },
+          );
+    return onRefresh == null
+        ? list
+        : RefreshIndicator(onRefresh: onRefresh!, child: list);
+  }
+}
+
+Widget _swipeBackground(BuildContext context, RowSwipeAction action) {
+  final color = action.color ?? Theme.of(context).colorScheme.primary;
+  return Container(
+    color: color.withValues(alpha: 0.15),
+    alignment: Alignment.centerRight,
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(action.icon, size: 18, color: color),
+        const SizedBox(width: 6),
+        Text(action.label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
 }
 
 class _Row extends StatelessWidget {

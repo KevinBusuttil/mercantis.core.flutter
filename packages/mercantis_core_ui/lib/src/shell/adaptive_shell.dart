@@ -59,10 +59,19 @@ class AdaptiveShell extends ConsumerWidget {
       child: Focus(
         autofocus: true,
         child: switch (bp) {
-          Breakpoint.phone => _PhoneShell(
-              visible: visible,
-              selectedIndex: selected,
-              child: child,
+          // Phone: a left-edge swipe goes up one level (form → its list →
+          // home), matching the drill-in path. Only on phone, where the left
+          // edge is content (no nav rail) and back-swipe is expected.
+          Breakpoint.phone => _EdgeBackDetector(
+              onBack: () {
+                final parent = parentLocation(location);
+                if (parent != null) context.go(parent);
+              },
+              child: _PhoneShell(
+                visible: visible,
+                selectedIndex: selected,
+                child: child,
+              ),
             ),
           Breakpoint.compact => _RailShell(
               visible: visible,
@@ -93,6 +102,69 @@ class AdaptiveShell extends ConsumerWidget {
             ),
         },
       ),
+    );
+  }
+}
+
+/// The location a left-edge back-swipe navigates to from [location] — one level
+/// up the drill path. `/form/:type/:name` → its list, `/list/:type` → home,
+/// `/w/:id/:route` → its workspace, `/w/:id` → home. Null at a top-level
+/// location (nothing to go back to). Operates on the raw (still URL-encoded)
+/// path segments so the rebuilt location matches how the route was addressed.
+String? parentLocation(String location) {
+  final q = location.indexOf('?');
+  final path = q >= 0 ? location.substring(0, q) : location;
+  final segs = path.split('/').where((s) => s.isNotEmpty).toList();
+  if (segs.isEmpty) return null;
+  switch (segs.first) {
+    case 'form':
+      return segs.length >= 2 ? '/list/${segs[1]}' : '/';
+    case 'list':
+      return '/';
+    case 'w':
+      return segs.length >= 3 ? '/w/${segs[1]}' : '/';
+    default:
+      return null;
+  }
+}
+
+/// Overlays a thin left-edge strip that turns a rightward swipe/flick into
+/// [onBack]. The strip is narrow (24px) and only handles horizontal drags, so
+/// taps and in-content gestures (row swipes, tab swipes) are unaffected.
+class _EdgeBackDetector extends StatefulWidget {
+  const _EdgeBackDetector({required this.onBack, required this.child});
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  State<_EdgeBackDetector> createState() => _EdgeBackDetectorState();
+}
+
+class _EdgeBackDetectorState extends State<_EdgeBackDetector> {
+  double _dx = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 24,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: (_) => _dx = 0,
+            onHorizontalDragUpdate: (d) => _dx += d.delta.dx,
+            onHorizontalDragEnd: (d) {
+              final flick = (d.primaryVelocity ?? 0) > 300;
+              if (_dx > 90 || flick) widget.onBack();
+              _dx = 0;
+            },
+          ),
+        ),
+      ],
     );
   }
 }
