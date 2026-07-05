@@ -49,14 +49,7 @@ class AdaptiveShell extends ConsumerWidget {
     }
     final selected = _selectedWorkspaceIndex(location, visible);
 
-    // Intercept the system/back-swipe (Android's left-edge gesture, the back
-    // button, browser back) and walk our own history — the app navigates by
-    // replace (context.go), so there's no Navigator stack to pop, and without
-    // this a back-swipe exits the app instead of returning to the previous
-    // screen.
-    return BackSwipeScope(
-      location: location,
-      child: CallbackShortcuts(
+    return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
             showGlobalSearch(context),
@@ -100,84 +93,6 @@ class AdaptiveShell extends ConsumerWidget {
             ),
         },
       ),
-      ),
-    );
-  }
-}
-
-/// A back-stack for the app's replace-based navigation (`context.go`): records
-/// visited locations so a back gesture can return to the *actual* previous
-/// screen — not a heuristic parent — even when the user jumped straight to a
-/// form via a quick action. Pure, so the stack logic is unit-testable.
-class NavHistory {
-  NavHistory(String initial) {
-    _stack.add(initial);
-  }
-
-  final List<String> _stack = [];
-  static const _cap = 50;
-
-  int get length => _stack.length;
-  bool get canGoBack => _stack.length > 1;
-  String? get current => _stack.isEmpty ? null : _stack.last;
-
-  /// Record a forward navigation. A repeat of the current location is ignored —
-  /// which also absorbs the router re-reporting the location after [back].
-  void visit(String location) {
-    if (_stack.isNotEmpty && _stack.last == location) return;
-    _stack.add(location);
-    if (_stack.length > _cap) _stack.removeAt(0);
-  }
-
-  /// Drop the current location and return the previous one to navigate to, or
-  /// null when there's nothing to go back to (let the system exit the app).
-  String? back() {
-    if (_stack.length <= 1) return null;
-    _stack.removeLast();
-    return _stack.last;
-  }
-}
-
-/// Wraps the shell in a [PopScope] that turns every back intent — Android's
-/// left-edge swipe, the back button, browser back — into a walk back through
-/// [NavHistory], instead of letting go_router exit the app (it has no Navigator
-/// stack to pop, since the app navigates by replace). Exits only when there's
-/// no history left. Persists across in-shell navigations because the ShellRoute
-/// keeps its subtree — so [State] (and the history) survives.
-class BackSwipeScope extends StatefulWidget {
-  const BackSwipeScope({super.key, required this.location, required this.child});
-  final String location;
-  final Widget child;
-
-  @override
-  State<BackSwipeScope> createState() => _BackSwipeScopeState();
-}
-
-class _BackSwipeScopeState extends State<BackSwipeScope> {
-  late final NavHistory _history = NavHistory(widget.location);
-
-  @override
-  void didUpdateWidget(BackSwipeScope oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.location != oldWidget.location) {
-      // Record forward navigations; a back() target is deduped by NavHistory.
-      // build() runs right after didUpdateWidget, so no setState is needed.
-      _history.visit(widget.location);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      // Let the system handle back (exit) only when there's nowhere to go back
-      // to; otherwise intercept and walk our history.
-      canPop: !_history.canGoBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        final target = _history.back();
-        if (target != null) context.go(target);
-      },
-      child: widget.child,
     );
   }
 }

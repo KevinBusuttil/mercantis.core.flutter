@@ -257,7 +257,8 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   /// route (`?selected=`) so the detail pane updates in the desktop split.
   void _openRecord(DocType type, String id) {
     if (Breakpoint.of(context).isPhone) {
-      context.go('/form/${type.id}/$id');
+      // push so the system back returns to the list.
+      context.push('/form/${type.id}/$id');
     } else {
       context.go('/list/${type.id}?selected=${Uri.encodeQueryComponent(id)}');
     }
@@ -332,7 +333,8 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
     );
   }
 
-  void _newRecord(DocType type) => context.go('/form/${type.id}/new');
+  // push so the system back returns to the list.
+  void _newRecord(DocType type) => context.push('/form/${type.id}/new');
 
   void _invalidateDocs() => ref.invalidate(
         metadataDocsProvider(MetadataListArgs(widget.docTypeName, widget.filter)),
