@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../theme/atlas/atlas_bottom_navigation.dart';
 import '../theme/atlas/atlas_nav_destination.dart';
 import '../theme/atlas/atlas_navigation_rail.dart';
+import '../providers/notification_providers.dart';
 import '../theme/tokens/brand_colors.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
@@ -20,10 +21,17 @@ class AdaptiveShell extends ConsumerWidget {
     required this.location,
     this.brandLabel = 'Mercantis',
     this.brandMark = 'M',
+    this.notificationsLocation,
   });
 
   final Widget child;
   final String location;
+
+  /// Route the shell bell navigates to, e.g. a workspace's notifications view.
+  /// When null (the default), no bell is shown — the host opts in by threading
+  /// a location. Skipped on phone, where the bottom bar has no room; the phone
+  /// reaches notifications through a Home quick-action instead.
+  final String? notificationsLocation;
 
   /// Product name shown beside the mark on the extended rail / sidebar, and the
   /// single glyph shown in the brand square. Defaults to the core studio brand;
@@ -62,6 +70,7 @@ class AdaptiveShell extends ConsumerWidget {
               extended: false,
               brandLabel: brandLabel,
               brandMark: brandMark,
+              notificationsLocation: notificationsLocation,
               child: child,
             ),
           Breakpoint.medium => _RailShell(
@@ -70,6 +79,7 @@ class AdaptiveShell extends ConsumerWidget {
               extended: true,
               brandLabel: brandLabel,
               brandMark: brandMark,
+              notificationsLocation: notificationsLocation,
               child: child,
             ),
           Breakpoint.expanded => _SidebarShell(
@@ -78,6 +88,7 @@ class AdaptiveShell extends ConsumerWidget {
               location: location,
               brandLabel: brandLabel,
               brandMark: brandMark,
+              notificationsLocation: notificationsLocation,
               child: child,
             ),
         },
@@ -191,6 +202,7 @@ class _RailShell extends StatelessWidget {
     required this.extended,
     required this.brandLabel,
     required this.brandMark,
+    required this.notificationsLocation,
     required this.child,
   });
 
@@ -199,11 +211,13 @@ class _RailShell extends StatelessWidget {
   final bool extended;
   final String brandLabel;
   final String brandMark;
+  final String? notificationsLocation;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final notificationsLocation = this.notificationsLocation;
     return Scaffold(
       body: Row(
         children: [
@@ -215,6 +229,20 @@ class _RailShell extends StatelessWidget {
             accentColor: visible[selectedIndex].accentColor,
             onSelected: (i) => context.go(visible[i].path),
             leading: _SearchButton(extended: extended),
+            // Pin the notifications bell to the bottom of the rail.
+            trailing: notificationsLocation == null
+                ? null
+                : Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.only(bottom: MercantisSpacing.lg),
+                        child:
+                            _NotificationBell(location: notificationsLocation),
+                      ),
+                    ),
+                  ),
             destinations: [
               for (final w in visible)
                 AtlasNavDestination(
@@ -331,6 +359,61 @@ class _SearchButton extends StatelessWidget {
   }
 }
 
+/// Shell bell: a notifications button badged with the current operator's unread
+/// count of **addressed** messages (see
+/// [notificationUnreadForCurrentUserProvider] — broadcasts are shown in the
+/// inbox but don't drive the badge). Icon-only on the rail, a labelled row in
+/// the sidebar footer. Tapping routes to the host-supplied [location].
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell({required this.location, this.labelled = false});
+
+  final String location;
+  final bool labelled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final unread = ref.watch(notificationUnreadForCurrentUserProvider).maybeWhen(
+          data: (c) => c,
+          orElse: () => 0,
+        );
+    final badgedIcon = Badge.count(
+      count: unread,
+      isLabelVisible: unread > 0,
+      child: const Icon(Icons.notifications_outlined),
+    );
+
+    if (!labelled) {
+      return IconButton(
+        icon: badgedIcon,
+        tooltip: 'Notifications',
+        onPressed: () => context.go(location),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: MercantisRadius.rMd,
+      child: InkWell(
+        borderRadius: MercantisRadius.rMd,
+        onTap: () => context.go(location),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            children: [
+              badgedIcon,
+              const SizedBox(width: MercantisSpacing.sm),
+              Expanded(
+                child: Text('Notifications', style: theme.textTheme.bodyMedium),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Sidebar (expanded) ──────────────────────────────────────────────────────
 
 /// Which workspaces are expanded in the desktop sidebar (HU5 multi-expand).
@@ -368,6 +451,7 @@ class _SidebarShell extends ConsumerStatefulWidget {
     required this.location,
     required this.brandLabel,
     required this.brandMark,
+    required this.notificationsLocation,
     required this.child,
   });
 
@@ -376,6 +460,7 @@ class _SidebarShell extends ConsumerStatefulWidget {
   final String location;
   final String brandLabel;
   final String brandMark;
+  final String? notificationsLocation;
   final Widget child;
 
   @override
@@ -480,6 +565,18 @@ class _SidebarShellState extends ConsumerState<_SidebarShell> {
                           ],
                         ),
                 ),
+                if (widget.notificationsLocation != null) ...[
+                  Divider(height: 1, thickness: 1, color: cs.outlineVariant),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: MercantisSpacing.sm,
+                        vertical: MercantisSpacing.xs),
+                    child: _NotificationBell(
+                      location: widget.notificationsLocation!,
+                      labelled: true,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
