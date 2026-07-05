@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/core_providers.dart';
+import '../providers/document_revision_provider.dart';
 import '../theme/atlas/atlas.dart';
 import 'record_tree_view.dart';
 import 'record_view_mode.dart';
@@ -11,6 +12,10 @@ import 'record_view_mode_toggle.dart';
 
 final _listProvider =
     FutureProvider.family<List<Document>, String>((ref, docTypeName) async {
+  // Re-fetch when a document of this DocType is written (the shared
+  // documents-changed seam), so returning to this list after a form mutation
+  // doesn't serve a stale cached future.
+  ref.watch(documentRevisionProvider(docTypeName));
   final engine = await ref.watch(documentEngineProvider.future);
   return engine.list(docTypeName);
 });

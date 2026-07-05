@@ -7,6 +7,7 @@ import '../metadata/metadata_display.dart';
 import '../panes/document_list_pane.dart';
 import '../panes/responsive_split.dart';
 import '../providers/core_providers.dart';
+import '../providers/document_revision_provider.dart';
 import '../shell/breakpoints.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
@@ -16,8 +17,15 @@ import 'record_tree_view.dart';
 import 'record_view_mode.dart';
 import 'record_view_mode_toggle.dart';
 
-final _docsProvider =
-    FutureProvider.family<List<Document>, _ListArgs>((ref, args) async {
+/// The metadata list's document data. Re-fetches whenever a document of this
+/// DocType is written (create / update / submit / cancel / delete) — it watches
+/// the shared [documentRevisionProvider] "documents changed" seam a form bumps
+/// after a mutation. Public so the invalidation seam can be exercised directly
+/// in a test (driving the async list through a widget is unreliable under the
+/// fake-async test zone that sqflite futures don't settle in).
+final metadataDocsProvider =
+    FutureProvider.family<List<Document>, MetadataListArgs>((ref, args) async {
+  ref.watch(documentRevisionProvider(args.docType));
   final engine = await ref.watch(documentEngineProvider.future);
   return engine.list(
     args.docType,
@@ -36,14 +44,16 @@ final _docTypeProvider =
   }
 });
 
-class _ListArgs {
-  const _ListArgs(this.docType, this.filter);
+/// Family key for [metadataDocsProvider]: a DocType plus an optional filter,
+/// with value equality so equal (docType, filter) pairs share one cache entry.
+class MetadataListArgs {
+  const MetadataListArgs(this.docType, this.filter);
   final String docType;
   final Map<String, dynamic>? filter;
 
   @override
   bool operator ==(Object other) =>
-      other is _ListArgs &&
+      other is MetadataListArgs &&
       other.docType == docType &&
       _mapEq(other.filter, filter);
 
@@ -130,8 +140,8 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
 
   @override
   Widget build(BuildContext context) {
-    final docsAsync = ref.watch(_docsProvider(
-      _ListArgs(widget.docTypeName, widget.filter),
+    final docsAsync = ref.watch(metadataDocsProvider(
+      MetadataListArgs(widget.docTypeName, widget.filter),
     ));
     final docTypeAsync = ref.watch(_docTypeProvider(widget.docTypeName));
     final bp = Breakpoint.of(context);
@@ -321,7 +331,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   void _newRecord(DocType type) => context.go('/form/${type.id}/new');
 
   void _invalidateDocs() => ref.invalidate(
-        _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
+        metadataDocsProvider(MetadataListArgs(widget.docTypeName, widget.filter)),
       );
 
   Widget _emptyDetail() => const EmptyState(
