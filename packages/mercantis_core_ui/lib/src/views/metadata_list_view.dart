@@ -190,11 +190,23 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
   /// or a [RecordTreeView]. Used identically on phone and in the desktop split.
   Widget _buildCollection(DocType type, List<Document> docs) {
     if (!type.isTree) return _buildList(type, docs);
+    final tree = _viewMode == RecordViewMode.tree;
     return Column(
       children: [
-        RecordViewModeToggle(mode: _viewMode, onChanged: _setViewMode),
+        Row(
+          children: [
+            Expanded(
+              child: RecordViewModeToggle(
+                  mode: _viewMode, onChanged: _setViewMode),
+            ),
+            // Tree mode replaces the DocumentListPane, which owns the new /
+            // import-export / phone-search actions — surface them here so those
+            // controls aren't lost until the user switches back to List.
+            if (tree) ..._treeActions(type),
+          ],
+        ),
         Expanded(
-          child: _viewMode == RecordViewMode.tree
+          child: tree
               ? RecordTreeView(
                   docType: type,
                   documents: docs,
@@ -206,6 +218,29 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       ],
     );
   }
+
+  List<Widget> _treeActions(DocType type) => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12, right: MercantisSpacing.sm),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (Breakpoint.of(context).isPhone)
+                IconButton(
+                  icon: const Icon(Icons.manage_search),
+                  tooltip: 'Search everything',
+                  onPressed: () => showGlobalSearch(context),
+                ),
+              ImportExportMenu(docType: type.id, onChanged: _invalidateDocs),
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New ${type.name}',
+                onPressed: () => _newRecord(type),
+              ),
+            ],
+          ),
+        ),
+      ];
 
   /// Open a record — push the form on phone, or sync the selection into the
   /// route (`?selected=`) so the detail pane updates in the desktop split.
@@ -266,7 +301,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       // deep-linkable; the query change rebuilds this view with the new
       // selectedId (local filter state persists — same route page key).
       onRowTap: (r) => _openRecord(type, r.id),
-      onNew: () => context.go('/form/${type.id}/new'),
+      onNew: () => _newRecord(type),
       newLabel: 'New ${type.name}',
       trailingActions: [
         // Phones have no navigation-rail search button, and this pane's own
@@ -278,15 +313,16 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
             tooltip: 'Search everything',
             onPressed: () => showGlobalSearch(context),
           ),
-        ImportExportMenu(
-          docType: type.id,
-          onChanged: () => ref.invalidate(
-            _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
-          ),
-        ),
+        ImportExportMenu(docType: type.id, onChanged: _invalidateDocs),
       ],
     );
   }
+
+  void _newRecord(DocType type) => context.go('/form/${type.id}/new');
+
+  void _invalidateDocs() => ref.invalidate(
+        _docsProvider(_ListArgs(widget.docTypeName, widget.filter)),
+      );
 
   Widget _emptyDetail() => const EmptyState(
         title: 'Nothing selected',
