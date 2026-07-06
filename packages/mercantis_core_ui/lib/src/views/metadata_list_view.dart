@@ -260,7 +260,10 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       // push so the system back returns to the list.
       context.push('/form/${type.id}/$id');
     } else {
-      context.go('/list/${type.id}?selected=${Uri.encodeQueryComponent(id)}');
+      // Desktop split: swap the query-only selection in place (replace, not
+      // go) so the pushed workspace/list stays under it and the system back
+      // still returns to the previous screen instead of exiting.
+      context.replace('/list/${type.id}?selected=${Uri.encodeQueryComponent(id)}');
     }
   }
 
