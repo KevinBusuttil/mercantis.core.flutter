@@ -18,6 +18,7 @@ export 'src/identity/execution_context.dart';
 export 'src/document_engine/document.dart';
 export 'src/document_engine/document_engine.dart';
 export 'src/document_engine/document_version.dart';
+export 'src/document_engine/audit_log_reader.dart';
 export 'src/document_engine/list_filter.dart';
 export 'src/document_engine/unit_of_work.dart';
 export 'src/document_engine/validation_pipeline.dart';
