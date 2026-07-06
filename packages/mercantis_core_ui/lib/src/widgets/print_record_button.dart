@@ -8,6 +8,13 @@ import '../providers/import_export_providers.dart';
 
 enum _PrintAction { print, share }
 
+/// The letter-head applied to auto-generated print formats (branding). Apps
+/// override this with the id of a [LetterHead] they have registered on the
+/// [printServiceProvider] (e.g. a company letterhead built at boot); the
+/// default `null` keeps output unbranded. Unknown ids are ignored by the
+/// [PrintService], so a stale override can't break printing.
+final defaultLetterHeadIdProvider = Provider<String?>((_) => null);
+
 /// App-bar action that renders a record to a real PDF (via the core
 /// [PrintService]'s pure-Dart `pdf` renderer) and hands it to the platform's
 /// native print/preview dialog or share sheet using the `printing` plugin.
@@ -74,6 +81,7 @@ class PrintRecordButton extends ConsumerWidget {
         id: 'auto-$docType',
         name: meta.name,
         docType: docType,
+        letterHeadId: ref.read(defaultLetterHeadIdProvider),
         sections: [
           HeadingSection(meta.name),
           FieldsSection(keys: fieldKeys),
