@@ -62,18 +62,26 @@ class SyncEngine {
       }
 
       final mutations = rows.map(MutationRecord.fromDbRow).toList();
-      await _markStatus(mutations.map((m) => m.id).toList(),
-          MutationStatus.pushing);
+      final ids = mutations.map((m) => m.id).toList();
+      await _markStatus(ids, MutationStatus.pushing);
 
-      // Ship attachment bytes ahead of the metadata mutations that reference
-      // them, so a peer that pulls the mutation always finds the blob waiting.
-      await _pushBlobsFor(mutations);
-      await _cloudAdapter.push(mutations);
-      await _markStatus(
-          mutations.map((m) => m.id).toList(), MutationStatus.pushed);
+      try {
+        // Ship attachment bytes ahead of the metadata mutations that reference
+        // them, so a peer that pulls the mutation always finds the blob waiting.
+        await _pushBlobsFor(mutations);
+        await _cloudAdapter.push(mutations);
+      } catch (_) {
+        // A failed push must strand nothing: return the batch to `pending` so
+        // the next cycle retries it (the retry query only selects pending —
+        // rows stuck in `pushing` would never ship again).
+        await _markStatus(ids, MutationStatus.pending);
+        rethrow;
+      }
+      await _markStatus(ids, MutationStatus.pushed);
       _stateController.add(SyncEngineState.idle);
     } catch (e) {
       _stateController.add(SyncEngineState.error);
+      rethrow;
     }
   }
 
