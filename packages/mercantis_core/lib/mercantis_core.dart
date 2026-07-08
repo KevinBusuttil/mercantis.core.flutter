@@ -48,6 +48,7 @@ export 'src/expression_engine/document_lookup_resolver.dart';
 export 'src/sync_engine/mutation_record.dart';
 export 'src/sync_engine/cloud_adapter.dart';
 export 'src/sync_engine/file_system_cloud_adapter.dart';
+export 'src/sync_engine/http_cloud_adapter.dart';
 export 'src/sync_engine/conflict_resolver.dart';
 export 'src/sync_engine/sync_engine.dart';
 

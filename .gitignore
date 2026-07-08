@@ -17,3 +17,14 @@ ios/Pods/
 ios/Flutter/flutter_export_environment.sh
 coverage/
 pubspec.lock
+
+# Flutter tool output regenerated on every build of the example app —
+# never hand-edited, differs per machine.
+app/ios/Flutter/Generated.xcconfig
+app/ios/Flutter/flutter_export_environment.sh
+app/ios/Flutter/ephemeral/
+app/macos/Flutter/GeneratedPluginRegistrant.swift
+app/macos/Flutter/ephemeral/
+app/windows/flutter/generated_plugin_registrant.cc
+app/windows/flutter/generated_plugin_registrant.h
+app/windows/flutter/generated_plugins.cmake
