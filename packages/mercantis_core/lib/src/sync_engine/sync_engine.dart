@@ -7,6 +7,7 @@ import '../files/attachment_store.dart';
 import '../metadata/metadata_registry.dart';
 import 'cloud_adapter.dart';
 import 'conflict_resolver.dart';
+import 'http_cloud_adapter.dart' show CloudHttpException;
 import 'mutation_record.dart';
 
 enum SyncEngineState { idle, pushing, pulling, error }
@@ -70,11 +71,20 @@ class SyncEngine {
         // them, so a peer that pulls the mutation always finds the blob waiting.
         await _pushBlobsFor(mutations);
         await _cloudAdapter.push(mutations);
-      } catch (_) {
-        // A failed push must strand nothing: return the batch to `pending` so
-        // the next cycle retries it (the retry query only selects pending —
-        // rows stuck in `pushing` would never ship again).
-        await _markStatus(ids, MutationStatus.pending);
+      } catch (e) {
+        if (_isPermanentRejection(e)) {
+          // The server refused the batch for a reason a retry can't change
+          // (e.g. 409: a mutation touches an officially posted, immutable
+          // document). Re-pending would fail identically every cycle
+          // forever, so isolate the poison: push per mutation, quarantine
+          // the rejected ones as `failed` for user action, ship the rest.
+          await _quarantinePermanentRejections(mutations);
+        } else {
+          // Transient (network, 5xx): return the batch to `pending` so the
+          // next cycle retries it (the retry query only selects pending —
+          // rows stuck in `pushing` would never ship again).
+          await _markStatus(ids, MutationStatus.pending);
+        }
         rethrow;
       }
       await _markStatus(ids, MutationStatus.pushed);
@@ -299,11 +309,68 @@ class SyncEngine {
     }
   }
 
+  /// A 4xx the server will answer identically on every retry. 408 (timeout)
+  /// and 429 (rate limit) stay transient by definition.
+  static bool _isPermanentRejection(Object e) =>
+      e is CloudHttpException &&
+      e.statusCode >= 400 &&
+      e.statusCode < 500 &&
+      e.statusCode != 408 &&
+      e.statusCode != 429;
+
+  /// Fallback path after a batch-level permanent rejection: the server
+  /// refuses whole batches, so it can't say WHICH mutation poisoned this
+  /// one. Re-push one by one — accepted mutations mark `pushed`, permanent
+  /// rejections mark `failed` (quarantined until [requeueFailed]), and a
+  /// transient error mid-way re-pends the not-yet-attempted remainder.
+  Future<void> _quarantinePermanentRejections(
+      List<MutationRecord> mutations) async {
+    for (var i = 0; i < mutations.length; i++) {
+      final mutation = mutations[i];
+      try {
+        await _cloudAdapter.push([mutation]);
+        await _markStatus([mutation.id], MutationStatus.pushed);
+      } catch (e) {
+        if (_isPermanentRejection(e)) {
+          await _markStatus([mutation.id], MutationStatus.failed);
+        } else {
+          // Transport dropped mid-quarantine: everything not yet attempted
+          // (including this one) retries next cycle.
+          await _markStatus(
+            [for (final m in mutations.skip(i)) m.id],
+            MutationStatus.pending,
+          );
+          return;
+        }
+      }
+    }
+  }
+
   Future<int> pendingCount() async {
     final result = await _db.rawQuery(
         'SELECT COUNT(*) as count FROM sync_queue WHERE status = ?',
         [MutationStatus.pending.name]);
     return (result.first['count'] as int?) ?? 0;
+  }
+
+  /// Mutations quarantined by a permanent server rejection — visible so the
+  /// UI can surface them for user action instead of hiding a silent stall.
+  Future<int> failedCount() async {
+    final result = await _db.rawQuery(
+        'SELECT COUNT(*) as count FROM sync_queue WHERE status = ?',
+        [MutationStatus.failed.name]);
+    return (result.first['count'] as int?) ?? 0;
+  }
+
+  /// Returns quarantined mutations to `pending` so the next push retries
+  /// them — the explicit user action after fixing what the server rejected.
+  Future<int> requeueFailed() async {
+    return _db.update(
+      'sync_queue',
+      {'status': MutationStatus.pending.name},
+      where: 'status = ?',
+      whereArgs: [MutationStatus.failed.name],
+    );
   }
 
   void dispose() => _stateController.close();
