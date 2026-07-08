@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 import '../metadata/metadata_display.dart';
 import '../providers/core_providers.dart';
+import 'official_posting.dart';
 import '../providers/document_revision_provider.dart';
 import '../providers/recents_providers.dart';
 import '../shell/recents_store.dart';
@@ -389,7 +390,14 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       _error = null;
     });
     try {
-      await engine.submit(current, _userRoles);
+      // Official postings may be owned by a host override (Atlas Team: the
+      // backend posting authority). Drafts always stay local.
+      final official = ref.read(officialPostingOverrideProvider);
+      if (official != null && official.handles(widget.docTypeName)) {
+        await official.submit(ref, current);
+      } else {
+        await engine.submit(current, _userRoles);
+      }
       setState(() {
         _fieldErrors.clear();
         _childErrors.clear();
@@ -427,7 +435,12 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       _error = null;
     });
     try {
-      await engine.cancel(current, _userRoles);
+      final official = ref.read(officialPostingOverrideProvider);
+      if (official != null && official.handles(widget.docTypeName)) {
+        await official.cancel(ref, current);
+      } else {
+        await engine.cancel(current, _userRoles);
+      }
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
       _bumpRevision();
     } catch (e) {
