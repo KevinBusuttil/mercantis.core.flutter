@@ -33,17 +33,23 @@ class CloudHttpException implements Exception {
 /// the server assigns per-company monotonic sync versions on push and this
 /// adapter stamps them back onto the pushed records, mirroring what
 /// `FileSystemCloudAdapter` does with its local sequence.
-class HttpCloudAdapter implements CloudAdapter {
+class HttpCloudAdapter implements PagedCloudAdapter {
   HttpCloudAdapter({
     required String baseUrl,
     required this.companyId,
     required this.deviceToken,
     http.Client? client,
+    this.pageSize,
   })  : _base = Uri.parse(baseUrl.replaceAll(RegExp(r'/+$'), '')),
         _client = client ?? http.Client();
 
   final String companyId;
   final String deviceToken;
+
+  /// Optional client-side page size for pulls (sent as `limit`); the server
+  /// clamps it to its own maximum either way. Null lets the server decide.
+  final int? pageSize;
+
   final Uri _base;
   final http.Client _client;
 
@@ -79,22 +85,35 @@ class HttpCloudAdapter implements CloudAdapter {
     }
   }
 
+  /// Single-page pull for callers that don't page; [pullPage] is the real
+  /// protocol (the server caps every response at its page size).
   @override
-  Future<List<MutationRecord>> pull(String? afterSyncVersion) async {
+  Future<List<MutationRecord>> pull(String? afterSyncVersion) async =>
+      (await pullPage(afterSyncVersion)).mutations;
+
+  @override
+  Future<PullPage> pullPage(String? afterSyncVersion) async {
     final after =
         afterSyncVersion == null ? 0 : int.tryParse(afterSyncVersion) ?? 0;
     final response = await _client.get(
-      _url('/sync/pull', {'after': '$after'}),
+      _url('/sync/pull', {
+        'after': '$after',
+        if (pageSize != null && pageSize! > 0) 'limit': '$pageSize',
+      }),
       headers: _headers,
     );
     final body = _require(response);
     final raw = body['mutations'];
-    return [
-      if (raw is List)
-        for (final entry in raw)
-          if (entry is Map)
-            MutationRecord.fromWireJson(Map<String, dynamic>.from(entry)),
-    ];
+    return PullPage(
+      [
+        if (raw is List)
+          for (final entry in raw)
+            if (entry is Map)
+              MutationRecord.fromWireJson(Map<String, dynamic>.from(entry)),
+      ],
+      // Servers predating pagination send no flag — one page is everything.
+      hasMore: body['hasMore'] == true,
+    );
   }
 
   @override
