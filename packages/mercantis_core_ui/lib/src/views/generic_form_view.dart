@@ -596,7 +596,15 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
 
           return RecordWorkspaceChrome(
             docTypeName: widget.docTypeName,
-            documentName: doc.id.isEmpty ? null : doc.id,
+            // The server-allocated official number (Team posting authority)
+            // is the document's real-world identity once present; the local
+            // id stays an internal draft reference.
+            documentName: doc.id.isEmpty
+                ? null
+                : ((doc.payload['official_number'] is String &&
+                        (doc.payload['official_number'] as String).isNotEmpty)
+                    ? doc.payload['official_number'] as String
+                    : doc.id),
             isDirty: _isDirty,
             isSaving: _isSaving,
             isSubmittable: isSubmittable,
