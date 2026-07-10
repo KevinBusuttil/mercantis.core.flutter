@@ -484,6 +484,7 @@ class DocumentEngine {
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
+    await _auditLifecycle('deleted', docType, id, ctx);
     _emitter.publish(DocumentDeletedEvent(
         documentId: id, docType: docType, userId: ctx.operatorId));
   }
@@ -592,6 +593,30 @@ class DocumentEngine {
   /// SAME transaction — together, or the whole submit rolls back. This is the
   /// seam that makes "submitted but unposted / partially posted" impossible
   /// (port of Swift's `UnitOfWork`). When omitted, behaviour is unchanged.
+
+  /// One audit row per lifecycle transition. Save writes rich field diffs;
+  /// these record THAT the official action happened, by whom, from which
+  /// device — previously submit/cancel/amend/delete left no audit trace at
+  /// all (only sync mutations and events).
+  Future<void> _auditLifecycle(
+    String action,
+    String docType,
+    String documentId,
+    ExecutionContext ctx, {
+    Map<String, dynamic> detail = const {},
+  }) async {
+    await _db.insert('audit_log', {
+      'id': _uuid.v4(),
+      'document_id': documentId,
+      'doctype': docType,
+      'action': action,
+      'user_id': ctx.operatorId,
+      'device_id': ctx.deviceId,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'payload': jsonEncode({'diffs': [], ...detail}),
+    });
+  }
+
   Future<Document> submit(Document doc, Set<String> userRoles,
       {ExecutionContext? context,
       Future<void> Function(UnitOfWork uow)? inTransaction}) async {
@@ -653,6 +678,7 @@ class DocumentEngine {
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
+    await _auditLifecycle('submitted', doc.docType, doc.id, ctx);
     _emitter.publish(DocumentSubmittedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
@@ -701,6 +727,7 @@ class DocumentEngine {
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
+    await _auditLifecycle('cancelled', doc.docType, doc.id, ctx);
     _emitter.publish(DocumentCancelledEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
@@ -735,7 +762,10 @@ class DocumentEngine {
       payload: Map.from(original.payload),
       amendedFrom: original.id,
     );
-    return save(amended, userRoles, context: context);
+    final saved = await save(amended, userRoles, context: context);
+    await _auditLifecycle('amended', original.docType, original.id, ctx,
+        detail: {'amended_to': saved.id});
+    return saved;
   }
 }
 
