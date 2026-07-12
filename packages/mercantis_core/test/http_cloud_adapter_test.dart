@@ -188,6 +188,56 @@ void main() {
       expect(page.hasMore, isFalse); // no flag → nothing more
     });
 
+    // Codex review (PR #119): plain pull() must drain EVERY page — callers
+    // of the legacy CloudAdapter contract know nothing about hasMore, so a
+    // first-page-only return would silently truncate a bootstrap.
+    test('pull() drains all pages, advancing by the highest version',
+        () async {
+      final afters = <String>[];
+      final client = MockClient((req) async {
+        final after = req.url.queryParameters['after'] ?? '0';
+        afters.add(after);
+        return http.Response(
+            jsonEncode(switch (after) {
+              '0' => {
+                  'mutations': [
+                    {...record('m1').toWireJson(), 'syncVersion': '1'},
+                    {...record('m2').toWireJson(), 'syncVersion': '2'},
+                  ],
+                  'hasMore': true,
+                },
+              '2' => {
+                  'mutations': [
+                    {...record('m3').toWireJson(), 'syncVersion': '3'},
+                  ],
+                  'hasMore': false,
+                },
+              _ => {'mutations': [], 'hasMore': false},
+            }),
+            200);
+      });
+      final pulled = await adapter(client).pull(null);
+      expect(afters, ['0', '2']); // page 2 fetched from the page-1 cursor
+      expect([for (final m in pulled) m.id], ['m1', 'm2', 'm3']);
+    });
+
+    test('pull() stops rather than spinning when a page cannot advance',
+        () async {
+      var calls = 0;
+      final client = MockClient((req) async {
+        calls++;
+        return http.Response(
+            jsonEncode({
+              'mutations': [record('m1').toWireJson()], // no syncVersion
+              'hasMore': true, // a lying/buggy server
+            }),
+            200);
+      });
+      final pulled = await adapter(client).pull(null);
+      expect(calls, 1);
+      expect(pulled, hasLength(1));
+    });
+
     test('no pageSize configured sends no limit parameter', () async {
       Uri? seen;
       final client = MockClient((req) async {

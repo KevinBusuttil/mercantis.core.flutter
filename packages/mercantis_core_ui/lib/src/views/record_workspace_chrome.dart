@@ -23,6 +23,7 @@ class RecordWorkspaceChrome extends StatefulWidget {
     super.key,
     required this.docTypeName,
     required this.documentName,
+    this.displayTitle,
     required this.isDirty,
     required this.isSaving,
     required this.isSubmittable,
@@ -38,7 +39,16 @@ class RecordWorkspaceChrome extends StatefulWidget {
   });
 
   final String docTypeName;
+
+  /// The document's REAL id — forwarded to the timeline, attachments panel
+  /// and print button, which fetch and store by it. Never a display alias.
   final String? documentName;
+
+  /// Optional human-facing title for the header (e.g. the Team posting
+  /// authority's official number). Falls back to [documentName]. Display
+  /// only — never used as an id.
+  final String? displayTitle;
+
   final bool isDirty;
   final bool isSaving;
   final bool isSubmittable;
@@ -100,7 +110,9 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
         final wide = constraints.maxWidth >= _kSidePanelMinWidth;
         return Scaffold(
           appBar: AtlasHeader(
-            title: widget.documentName ?? 'New ${widget.docTypeName}',
+            title: widget.displayTitle ??
+                widget.documentName ??
+                'New ${widget.docTypeName}',
             // Phones have no navigation-rail search button, so surface a
             // tappable global-search action in the header there; larger
             // breakpoints already carry the rail's search affordance.

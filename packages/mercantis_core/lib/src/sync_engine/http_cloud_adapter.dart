@@ -85,11 +85,33 @@ class HttpCloudAdapter implements PagedCloudAdapter {
     }
   }
 
-  /// Single-page pull for callers that don't page; [pullPage] is the real
-  /// protocol (the server caps every response at its page size).
+  /// Drains EVERY page for callers of the plain [CloudAdapter] contract
+  /// (e.g. SyncEngine.pullAndApplyRemoteMutations), advancing the cursor by
+  /// the highest syncVersion seen. Returning only the first page here would
+  /// silently truncate a multi-page bootstrap. Pagers that want per-page
+  /// cursor commits use [pullPage] directly.
   @override
-  Future<List<MutationRecord>> pull(String? afterSyncVersion) async =>
-      (await pullPage(afterSyncVersion)).mutations;
+  Future<List<MutationRecord>> pull(String? afterSyncVersion) async {
+    final all = <MutationRecord>[];
+    var cursor = afterSyncVersion;
+    while (true) {
+      final page = await pullPage(cursor);
+      all.addAll(page.mutations);
+      if (!page.hasMore) return all;
+      String? next;
+      for (final m in page.mutations) {
+        final v = m.syncVersion;
+        if (v == null) continue;
+        if (next == null ||
+            (int.tryParse(v) ?? 0) > (int.tryParse(next) ?? 0)) {
+          next = v;
+        }
+      }
+      // No version to advance by would repeat the same page forever.
+      if (next == null || next == cursor) return all;
+      cursor = next;
+    }
+  }
 
   @override
   Future<PullPage> pullPage(String? afterSyncVersion) async {
