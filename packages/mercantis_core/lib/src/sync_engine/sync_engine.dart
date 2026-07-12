@@ -112,7 +112,14 @@ class SyncEngine {
     }
   }
 
-  Future<void> _applyMutation(MutationRecord mutation) async {
+  /// Applies [mutation] bypassing conflict resolution — the take-theirs arm
+  /// of a manual resolution (Phase 0.10). Only ConflictService should call
+  /// this, with a candidate the user explicitly chose.
+  Future<void> forceApplyRemoteMutation(MutationRecord mutation) =>
+      _applyMutation(mutation, force: true);
+
+  Future<void> _applyMutation(MutationRecord mutation,
+      {bool force = false}) async {
     // Attachments are not documents: route them before the document load /
     // conflict-resolution path, which keys on the `documents` table.
     if (mutation.type == MutationType.createAttachment) {
@@ -135,17 +142,29 @@ class SyncEngine {
     );
     final local = rows.isEmpty ? null : Document.fromDbRow(rows.first);
 
-    if (policy != null) {
+    if (policy != null && !force) {
       final outcome = _resolver.resolve(mutation, local, policy);
       if (outcome == ConflictOutcome.rejectRemote) return;
       if (outcome == ConflictOutcome.requiresManualResolution) {
-        // Mark local document as conflict state
+        // Mark the local document conflicted AND keep the losing remote
+        // candidate (Phase 0.10): without it there is nothing to offer the
+        // user as "theirs" — the mutation is gone once the cursor advances.
         if (local != null) {
           await _db.update(
             'documents',
             {'sync_state': SyncState.conflict.name},
             where: 'id = ?',
             whereArgs: [local.id],
+          );
+          await _db.insert(
+            'sync_conflicts',
+            {
+              'document_id': mutation.documentId,
+              'doctype': mutation.docType,
+              'remote_mutation': jsonEncode(mutation.toWireJson()),
+              'detected_at': DateTime.now().millisecondsSinceEpoch,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
           );
         }
         return;
@@ -208,22 +227,40 @@ class SyncEngine {
           whereArgs: [mutation.documentId, mutation.docType],
         );
       case MutationType.submitDocument:
-        await _db.update(
-          'documents',
-          {'docstatus': 1, 'sync_state': SyncState.synced.name},
-          where: 'id = ?',
-          whereArgs: [mutation.documentId],
-        );
+        await _applyLifecycleTransition(mutation, docstatus: 1);
       case MutationType.cancelDocument:
-        await _db.update(
-          'documents',
-          {'docstatus': 2, 'sync_state': SyncState.synced.name},
-          where: 'id = ?',
-          whereArgs: [mutation.documentId],
-        );
+        await _applyLifecycleTransition(mutation, docstatus: 2);
       default:
         break;
     }
+  }
+
+  /// Applies a remote submit/cancel. Beyond the docstatus flip, the
+  /// mutation's envelope may carry an updated payload — notably the
+  /// server-allocated `official_number` a Team posting authority stamps at
+  /// submit — which must land locally or the legal document number exists
+  /// only server-side. The envelope payload (when present) replaces the
+  /// stored one: at submit the document is immutable, so it is by
+  /// definition the same payload the client last pushed plus the fields the
+  /// authority added.
+  Future<void> _applyLifecycleTransition(MutationRecord mutation,
+      {required int docstatus}) async {
+    final values = <String, Object?>{
+      'docstatus': docstatus,
+      'sync_state': SyncState.synced.name,
+    };
+    final envelopePayload = mutation.payload['payload'];
+    if (envelopePayload is String && envelopePayload.isNotEmpty) {
+      values['payload'] = envelopePayload;
+    }
+    final modified = mutation.payload['modified_at'];
+    if (modified is num) values['modified_at'] = modified.toInt();
+    await _db.update(
+      'documents',
+      values,
+      where: 'id = ?',
+      whereArgs: [mutation.documentId],
+    );
   }
 
   // Attachment sync (ADR-048)

@@ -46,11 +46,14 @@ class NamingSeriesStrategy implements NamingStrategy {
   @override
   Future<String> resolve(
       DocType docType, Document document, NamingContext context) async {
-    // Resolve the hash placeholder via a per-device counter block (ADR-042),
-    // keyed on the resolved prefix so each series (and year) sequences
-    // independently and offline devices never collide.
-    final series = expandSeries(pattern);
-    if (series == null) return expandDates(pattern, DateTime.now());
+    // Field tokens first (`.{field_key}.` -> the document's value), THEN the
+    // hash placeholder via a per-device counter block (ADR-042). The counter
+    // is keyed on the fully resolved prefix, so a field-parameterised series
+    // (e.g. `POS-.{till_series}.-.####`) sequences independently per value --
+    // two tills can never mint the same receipt id.
+    final withFields = expandFields(pattern, document.payload);
+    final series = expandSeries(withFields);
+    if (series == null) return expandDates(withFields, DateTime.now());
 
     final n = await allocator.next(
       context.database,
@@ -59,6 +62,22 @@ class NamingSeriesStrategy implements NamingStrategy {
       seedFloor: (txn) => _maxExistingSuffix(txn, series.prefix),
     );
     return '${series.prefix}${n.toString().padLeft(series.width, '0')}';
+  }
+
+  /// Substitute `.{field_key}.` tokens with the document's value for that
+  /// field, sanitised to id-safe characters. A missing/blank value collapses
+  /// the token to a single `.` so the pattern stays well-formed (hosts that
+  /// need a guaranteed value should gate the pattern behind a conditional
+  /// naming rule instead).
+  static String expandFields(String pattern, Map<String, dynamic> payload) {
+    return pattern.replaceAllMapped(
+      RegExp(r'\.\{([A-Za-z0-9_]+)\}\.'),
+      (m) {
+        final raw = '${payload[m.group(1)] ?? ''}'.trim();
+        final safe = raw.replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
+        return safe.isEmpty ? '.' : '.$safe.';
+      },
+    );
   }
 
   /// Substitute the date placeholders (`.YYYY.`, `.YY.`, `.MM.`, `.DD.`) in a

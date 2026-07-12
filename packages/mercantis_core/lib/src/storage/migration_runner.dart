@@ -10,6 +10,7 @@ class MigrationRunner {
     if (version < 5) await _v5(db);
     if (version < 6) await _v6(db);
     if (version < 7) await _v7(db);
+    if (version < 8) await _v8(db);
   }
 
   static Future<int> _schemaVersion(Database db) async {
@@ -305,5 +306,26 @@ class MigrationRunner {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_broadcast_receipt_viewer ON notification_broadcast_receipt (viewer_id)');
     await db.update('schema_version', {'version': 7});
+  }
+
+  /// v8: conflict candidates (Phase 0.10, gap analysis §8-C6).
+  ///
+  /// When the resolver flags `requiresManualResolution`, the losing remote
+  /// mutation used to be dropped — the document was marked
+  /// `sync_state=conflict` with nothing to resolve against. This table keeps
+  /// the remote candidate (full wire-JSON mutation) so ConflictService can
+  /// offer keep-mine / take-theirs. One row per document: a newer remote
+  /// candidate replaces the older one.
+  static Future<void> _v8(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        document_id TEXT NOT NULL,
+        doctype TEXT NOT NULL,
+        remote_mutation TEXT NOT NULL,
+        detected_at INTEGER NOT NULL,
+        PRIMARY KEY (document_id, doctype)
+      )
+    ''');
+    await db.update('schema_version', {'version': 8});
   }
 }

@@ -50,6 +50,7 @@ export 'src/sync_engine/cloud_adapter.dart';
 export 'src/sync_engine/file_system_cloud_adapter.dart';
 export 'src/sync_engine/http_cloud_adapter.dart';
 export 'src/sync_engine/conflict_resolver.dart';
+export 'src/sync_engine/conflict_service.dart';
 export 'src/sync_engine/sync_engine.dart';
 
 // Naming

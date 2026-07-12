@@ -143,6 +143,61 @@ void main() {
             .having((e) => e.statusCode, 'statusCode', 401)),
       );
     });
+
+    // Phase 0.6 (gap analysis §8-C9): the server pages its pull responses;
+    // pullPage exposes the hasMore flag so callers can loop with a per-page
+    // cursor commit instead of receiving years of history in one body.
+    test('pullPage surfaces hasMore and an optional client page size',
+        () async {
+      Uri? seen;
+      final client = MockClient((req) async {
+        seen = req.url;
+        return http.Response(
+            jsonEncode({
+              'mutations': [
+                {...record('m9').toWireJson(), 'syncVersion': '9'},
+              ],
+              'hasMore': true,
+            }),
+            200);
+      });
+
+      final paged = HttpCloudAdapter(
+        baseUrl: 'https://sync.atlas.neuradix.app',
+        companyId: 'c0mp-any1',
+        deviceToken: 'devtok-secret',
+        client: client,
+        pageSize: 50,
+      );
+      final page = await paged.pullPage('8');
+      expect(seen!.queryParameters['after'], '8');
+      expect(seen!.queryParameters['limit'], '50');
+      expect(page.mutations.single.id, 'm9');
+      expect(page.hasMore, isTrue);
+    });
+
+    test('a server without pagination reads as a single final page',
+        () async {
+      final client = MockClient((_) async => http.Response(
+          jsonEncode({
+            'mutations': [record('m1').toWireJson()],
+          }),
+          200));
+      final page = await adapter(client).pullPage(null);
+      expect(page.mutations, hasLength(1));
+      expect(page.hasMore, isFalse); // no flag → nothing more
+    });
+
+    test('no pageSize configured sends no limit parameter', () async {
+      Uri? seen;
+      final client = MockClient((req) async {
+        seen = req.url;
+        return http.Response(
+            jsonEncode({'mutations': [], 'hasMore': false}), 200);
+      });
+      await adapter(client).pullPage(null);
+      expect(seen!.queryParameters.containsKey('limit'), isFalse);
+    });
   });
 
   group('acknowledge', () {

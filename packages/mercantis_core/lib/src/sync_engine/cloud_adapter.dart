@@ -1,5 +1,24 @@
 import 'mutation_record.dart';
 
+/// One page of a paginated pull: the mutations plus whether the server holds
+/// more past them. `hasMore == true` means pull again with the cursor
+/// advanced over this page.
+class PullPage {
+  const PullPage(this.mutations, {required this.hasMore});
+
+  final List<MutationRecord> mutations;
+  final bool hasMore;
+}
+
+/// A [CloudAdapter] whose server pages its pull responses (Phase 0.6,
+/// gap analysis §8-C9). Callers that know about paging should loop
+/// [pullPage] — applying and committing their cursor after every page, so an
+/// interrupted bootstrap resumes where it stopped instead of restarting.
+/// [CloudAdapter.pull] remains single-page for callers that don't.
+abstract class PagedCloudAdapter implements CloudAdapter {
+  Future<PullPage> pullPage(String? afterSyncVersion);
+}
+
 abstract class CloudAdapter {
   Future<void> push(List<MutationRecord> mutations);
   Future<List<MutationRecord>> pull(String? afterSyncVersion);
