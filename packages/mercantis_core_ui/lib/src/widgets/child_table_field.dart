@@ -380,7 +380,8 @@ bool _isLayout(FieldType t) =>
 
 bool _coerceBool(dynamic v) {
   if (v is bool) return v;
-  if (v is int) return v == 1;
+  if (v is num) return v == 1;
+  if (v is String) return v == '1' || v.toLowerCase() == 'true';
   return false;
 }
 

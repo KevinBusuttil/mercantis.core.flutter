@@ -1216,12 +1216,12 @@ class FieldWidget extends StatelessWidget {
         if (ChildTableContext.isInline(context)) {
           return CheckboxListTile(
             title: _inlineLabel(context),
-            value: (value as int? ?? 0) == 1,
+            value: _boolValue(value),
             onChanged: readOnly ? null : (v) => onChanged(v == true ? 1 : 0),
             contentPadding: EdgeInsets.zero,
           );
         }
-        final on = (value as int? ?? 0) == 1;
+        final on = _boolValue(value);
         return AtlasFieldRow(
           icon: atlasFieldIcon(field),
           label: _label,
@@ -1236,7 +1236,7 @@ class FieldWidget extends StatelessWidget {
       case FieldType.integer:
         if (ChildTableContext.isInline(context)) {
           return AtlasTextFieldEditor(
-            value: (value as int?)?.toString() ?? '',
+            value: _intValue(value)?.toString() ?? '',
             decoration: _decoration(context),
             keyboardType: TextInputType.number,
             readOnly: readOnly,
@@ -1248,7 +1248,7 @@ class FieldWidget extends StatelessWidget {
           label: _label,
           required: field.required,
           readOnly: readOnly,
-          value: (value as int?)?.toString(),
+          value: _intValue(value)?.toString(),
           keyboardType: TextInputType.number,
           onChanged: (v) => onChanged(int.tryParse(v)),
         );
@@ -1257,7 +1257,7 @@ class FieldWidget extends StatelessWidget {
       case FieldType.percent:
         if (ChildTableContext.isInline(context)) {
           return AtlasTextFieldEditor(
-            value: (value as num?)?.toString() ?? '',
+            value: _numValue(value)?.toString() ?? '',
             decoration: _decoration(
               context,
               suffixText: field.type == FieldType.percent ? '%' : null,
@@ -1269,7 +1269,7 @@ class FieldWidget extends StatelessWidget {
             onChanged: (v) => onChanged(double.tryParse(v)),
           );
         }
-        final numVal = value as num?;
+        final numVal = _numValue(value);
         // A read-only *currency* field is a computed money value → totals row;
         // the grand total gets the tinted emphasis. Gate on field.readOnly (not
         // the form-wide readOnly, which is also true for any submitted document)
@@ -1706,4 +1706,28 @@ class _DateTimeField extends StatelessWidget {
       onChanged: readOnly ? null : onChanged,
     );
   }
+}
+
+/// Payload values arrive both typed and stringly: the UI writes int/num,
+/// but seeders, interceptors, and synced JSON write '1'/'0' and numeric
+/// strings. The form must coerce, never cast — a String in a check or
+/// number field used to crash the whole form.
+bool _boolValue(dynamic v) {
+  if (v is bool) return v;
+  if (v is num) return v == 1;
+  if (v is String) return v == '1' || v.toLowerCase() == 'true';
+  return false;
+}
+
+int? _intValue(dynamic v) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v);
+  return null;
+}
+
+num? _numValue(dynamic v) {
+  if (v is num) return v;
+  if (v is String) return num.tryParse(v);
+  return null;
 }
