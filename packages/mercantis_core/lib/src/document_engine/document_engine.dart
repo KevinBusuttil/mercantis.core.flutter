@@ -286,6 +286,10 @@ class DocumentEngine {
       _normalizeScalars(payload, dt);
       await _applyFetchFrom(payload, dt);
       _applyFormulas(payload, dt);
+      // Derivation can itself produce non-canonical shapes — fetchFrom
+      // copies the linked document's raw value and a formula may return a
+      // bool — so normalize once more before anything persists.
+      _normalizeScalars(payload, dt);
     }
 
     await derive(doc.payload, docType);
@@ -338,8 +342,13 @@ class DocumentEngine {
         }
         final parsed = num.tryParse(v.trim());
         if (parsed == null) continue;
-        payload[f.key] =
-            wantsInt && parsed % 1 == 0 ? parsed.toInt() : parsed;
+        if (!wantsInt) {
+          payload[f.key] = parsed;
+        } else if (parsed % 1 == 0) {
+          payload[f.key] = parsed.toInt();
+        }
+        // A fractional value in a whole-number field is left untouched —
+        // normalization converts clean values, it never rounds data away.
       } else if (v is num && wantsInt && v is! int && v % 1 == 0) {
         payload[f.key] = v.toInt();
       }
