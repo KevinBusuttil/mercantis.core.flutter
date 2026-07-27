@@ -110,7 +110,9 @@ void main() {
       expect(table.rows[1]['id'], 'I-2');
       expect(table.rows[1]['qty'], '5');
       expect(table.rows[1]['price'], '9.5');
-      expect(table.rows[1]['active'], 'true');
+      // Checks persist canonically as 0/1 (save-time normalization), so
+      // that's what stringifies — and what the importer reads back as true.
+      expect(table.rows[1]['active'], '1');
       await s.db.close();
     });
 
@@ -170,7 +172,7 @@ void main() {
       final doc = await s.engine.fetch('Item', 'I-1');
       expect(doc!.payload['qty'], 3); // int
       expect(doc.payload['price'], 4.25); // double
-      expect(doc.payload['active'], true); // bool
+      expect(doc.payload['active'], 1); // check, normalized to 0/1 on save
       expect(doc.payload['item_name'], 'Bolt');
       await s.db.close();
     });
@@ -302,7 +304,7 @@ void main() {
     expect(doc!.payload['item_name'], 'Round, Trip'); // comma survived quoting
     expect(doc.payload['qty'], 2);
     expect(doc.payload['price'], 1.5);
-    expect(doc.payload['active'], false);
+    expect(doc.payload['active'], 0); // check, normalized to 0/1 on save
     await dst.db.close();
   });
 }
