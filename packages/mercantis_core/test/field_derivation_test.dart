@@ -56,6 +56,20 @@ void main() {
     ],
   );
 
+  const gadget = DocType(
+    id: 'Gadget',
+    name: 'Gadget',
+    fields: [
+      FieldDefinition(key: 'name', label: 'Name', type: FieldType.data),
+      FieldDefinition(key: 'enabled', label: 'Enabled', type: FieldType.check),
+      FieldDefinition(key: 'count', label: 'Count', type: FieldType.integer),
+      FieldDefinition(key: 'weight', label: 'Weight', type: FieldType.float),
+      FieldDefinition(
+          key: 'runtime', label: 'Runtime', type: FieldType.duration),
+      FieldDefinition(key: 'stars', label: 'Stars', type: FieldType.rating),
+    ],
+  );
+
   late MercantisDatabase db;
   late DocumentEngine engine;
   const roles = {'System Manager'};
@@ -64,7 +78,7 @@ void main() {
     db = await MercantisDatabase.open(
         factory: databaseFactoryFfi, path: inMemoryDatabasePath);
     final registry = MetadataRegistry(db.db);
-    for (final dt in [item, orderLine, order]) {
+    for (final dt in [item, orderLine, order, gadget]) {
       await registry.register(dt);
     }
     engine = DocumentEngine(
@@ -86,6 +100,84 @@ void main() {
   });
 
   tearDown(() => db.close());
+
+  group('scalar type normalization', () {
+    test('stringly check and numeric values persist typed', () async {
+      await engine.save(
+          Document(id: 'G1', docType: 'Gadget', payload: {
+            'name': 'A',
+            'enabled': '1', // seeders/interceptors write flag strings
+            'count': '42',
+            'weight': '18.5',
+            'runtime': '3600',
+            'stars': '4',
+          }),
+          roles);
+      final back = (await engine.fetch('Gadget', 'G1'))!;
+      expect(back.payload['enabled'], 1);
+      expect(back.payload['count'], 42);
+      expect(back.payload['weight'], 18.5);
+      expect(back.payload['runtime'], 3600);
+      expect(back.payload['stars'], 4);
+    });
+
+    test('check accepts every legacy form and stores 0/1', () async {
+      Future<dynamic> roundTrip(dynamic raw) async {
+        final saved = await engine.save(
+            Document(id: '', docType: 'Gadget', payload: {
+              'name': 'B',
+              'enabled': raw,
+            }),
+            roles);
+        return (await engine.fetch('Gadget', saved.id))!.payload['enabled'];
+      }
+
+      expect(await roundTrip(true), 1);
+      expect(await roundTrip(false), 0);
+      expect(await roundTrip('true'), 1);
+      expect(await roundTrip('0'), 0);
+      expect(await roundTrip(1), 1);
+    });
+
+    test('typed values and unparseable strings pass through unchanged',
+        () async {
+      await engine.save(
+          Document(id: 'G2', docType: 'Gadget', payload: {
+            'name': 'C',
+            'enabled': 0,
+            'count': 7,
+            'weight': 2.25,
+          }),
+          roles);
+      final back = (await engine.fetch('Gadget', 'G2'))!;
+      expect(back.payload['enabled'], 0);
+      expect(back.payload['count'], 7);
+      expect(back.payload['weight'], 2.25);
+      // A non-numeric string in a numeric field is left for validation —
+      // normalization never invents a value.
+      await engine.save(
+          Document(id: 'G3', docType: 'Gadget', payload: {
+            'name': 'D',
+            'weight': 'heavy',
+          }),
+          roles);
+      expect((await engine.fetch('Gadget', 'G3'))!.payload['weight'], 'heavy');
+    });
+
+    test('whole-number floats in int fields become ints', () async {
+      await engine.save(
+          Document(id: 'G4', docType: 'Gadget', payload: {
+            'name': 'E',
+            'count': 5.0, // JSON round-trips can widen ints to doubles
+            'stars': '3.0',
+          }),
+          roles);
+      final back = (await engine.fetch('Gadget', 'G4'))!;
+      expect(back.payload['count'], 5);
+      expect(back.payload['count'], isA<int>());
+      expect(back.payload['stars'], 3);
+    });
+  });
 
   test('empty numeric fields coerce to null (not "")', () async {
     final saved = await engine.save(

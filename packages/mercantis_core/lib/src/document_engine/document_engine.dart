@@ -260,19 +260,30 @@ class DocumentEngine {
 
   // MARK: declarative field derivation (C8)
 
+  /// Field types whose payload value is normalized to a number on save.
   static const Set<FieldType> _numericFieldTypes = {
     FieldType.integer,
     FieldType.float,
     FieldType.currency,
     FieldType.percent,
+    FieldType.duration,
+    FieldType.rating,
+  };
+
+  /// The numeric types stored as whole numbers (duration is seconds, rating
+  /// is stars).
+  static const Set<FieldType> _intFieldTypes = {
+    FieldType.integer,
+    FieldType.duration,
+    FieldType.rating,
   };
 
   /// Runs the three derivation passes over the header and each child row, in
-  /// order: numeric-null coercion → fetchFrom → formula recompute (so a formula
-  /// can consume a freshly fetched or coerced value).
+  /// order: scalar type normalization → fetchFrom → formula recompute (so a
+  /// formula can consume a freshly fetched or normalized value).
   Future<void> _deriveFields(Document doc, DocType docType) async {
     Future<void> derive(Map<String, dynamic> payload, DocType dt) async {
-      _coerceNumericNulls(payload, dt);
+      _normalizeScalars(payload, dt);
       await _applyFetchFrom(payload, dt);
       _applyFormulas(payload, dt);
     }
@@ -287,13 +298,51 @@ class DocumentEngine {
     }
   }
 
-  /// An empty string in a numeric field would persist as `""` and break
-  /// downstream numeric parsing / SQL comparisons — store `null` instead.
-  void _coerceNumericNulls(Map<String, dynamic> payload, DocType dt) {
+  /// Normalizes scalar payload values to their field's canonical Dart type,
+  /// so every consumer (forms, reports, expressions, exports, sync peers)
+  /// reads one shape. Writers are inconsistent — the UI sends int/num,
+  /// while seeders, interceptors, and imports send '1'/'0' and numeric
+  /// strings — and before this pass whatever shape was written is what
+  /// persisted.
+  ///
+  /// check → int 0/1 (from bool, num, '1'/'0'/'true'/'false'); numerics →
+  /// num, whole-number types → int; an empty string in a numeric field
+  /// becomes `null` (it would otherwise persist as `""` and break numeric
+  /// parsing / SQL comparisons). Anything unrecognized is left untouched
+  /// for validation to flag.
+  void _normalizeScalars(Map<String, dynamic> payload, DocType dt) {
     for (final f in dt.fields) {
-      if (!_numericFieldTypes.contains(f.type)) continue;
       final v = payload[f.key];
-      if (v is String && v.trim().isEmpty) payload[f.key] = null;
+      if (v == null) continue;
+      if (f.type == FieldType.check) {
+        if (v is bool) {
+          payload[f.key] = v ? 1 : 0;
+        } else if (v is num) {
+          payload[f.key] = v == 0 ? 0 : 1;
+        } else if (v is String) {
+          switch (v.trim().toLowerCase()) {
+            case '1' || 'true':
+              payload[f.key] = 1;
+            case '0' || 'false' || '':
+              payload[f.key] = 0;
+          }
+        }
+        continue;
+      }
+      if (!_numericFieldTypes.contains(f.type)) continue;
+      final wantsInt = _intFieldTypes.contains(f.type);
+      if (v is String) {
+        if (v.trim().isEmpty) {
+          payload[f.key] = null;
+          continue;
+        }
+        final parsed = num.tryParse(v.trim());
+        if (parsed == null) continue;
+        payload[f.key] =
+            wantsInt && parsed % 1 == 0 ? parsed.toInt() : parsed;
+      } else if (v is num && wantsInt && v is! int && v % 1 == 0) {
+        payload[f.key] = v.toInt();
+      }
     }
   }
 
