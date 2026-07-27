@@ -67,6 +67,15 @@ void main() {
       FieldDefinition(
           key: 'runtime', label: 'Runtime', type: FieldType.duration),
       FieldDefinition(key: 'stars', label: 'Stars', type: FieldType.rating),
+      FieldDefinition(
+          key: 'source', label: 'Source', type: FieldType.link,
+          linkDocType: 'Item', options: 'Item'),
+      FieldDefinition(
+          key: 'fetched_count', label: 'Fetched Count',
+          type: FieldType.integer, fetchFrom: 'source.item_name'),
+      FieldDefinition(
+          key: 'big', label: 'Big', type: FieldType.check,
+          formulaExpression: 'count > 3'),
     ],
   );
 
@@ -162,6 +171,49 @@ void main() {
           }),
           roles);
       expect((await engine.fetch('Gadget', 'G3'))!.payload['weight'], 'heavy');
+    });
+
+    test('derivation output is normalized too', () async {
+      // fetchFrom copies the linked doc's raw value — here a numeric
+      // string — and the formula returns a bool; both must persist
+      // canonically, not in the shape derivation produced.
+      await engine.save(
+          Document(
+              id: 'ITM42', docType: 'Item', payload: {'item_name': '42'}),
+          roles);
+      await engine.save(
+          Document(id: 'G5', docType: 'Gadget', payload: {
+            'name': 'F',
+            'count': 5,
+            'source': 'ITM42',
+          }),
+          roles);
+      final back = (await engine.fetch('Gadget', 'G5'))!;
+      expect(back.payload['fetched_count'], 42);
+      expect(back.payload['fetched_count'], isA<int>());
+      expect(back.payload['big'], 1); // count > 3 → true → 1
+
+      await engine.save(
+          Document(id: 'G6', docType: 'Gadget', payload: {
+            'name': 'G',
+            'count': 2,
+          }),
+          roles);
+      expect((await engine.fetch('Gadget', 'G6'))!.payload['big'], 0);
+    });
+
+    test('fractional values in whole-number fields are never rounded',
+        () async {
+      await engine.save(
+          Document(id: 'G7', docType: 'Gadget', payload: {
+            'name': 'H',
+            'count': '3.5', // left as-is — normalization never rounds
+            'stars': 2.5,
+          }),
+          roles);
+      final back = (await engine.fetch('Gadget', 'G7'))!;
+      expect(back.payload['count'], '3.5');
+      expect(back.payload['stars'], 2.5);
     });
 
     test('whole-number floats in int fields become ints', () async {
