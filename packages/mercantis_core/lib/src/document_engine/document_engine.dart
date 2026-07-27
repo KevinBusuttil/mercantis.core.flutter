@@ -253,7 +253,7 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
 
-    _emitter.publish(DocumentSavedEvent(
+    await _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
@@ -504,7 +504,7 @@ class DocumentEngine {
       localTimestamp: DateTime.now(),
       status: MutationStatus.pending,
     ));
-    _emitter.publish(DocumentSavedEvent(
+    await _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
@@ -543,7 +543,7 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
     await _auditLifecycle('deleted', docType, id, ctx);
-    _emitter.publish(DocumentDeletedEvent(
+    await _emitter.publish(DocumentDeletedEvent(
         documentId: id, docType: docType, userId: ctx.operatorId));
   }
 
@@ -737,7 +737,7 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
     await _auditLifecycle('submitted', doc.docType, doc.id, ctx);
-    _emitter.publish(DocumentSubmittedEvent(
+    await _emitter.publish(DocumentSubmittedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }
@@ -786,7 +786,7 @@ class DocumentEngine {
       status: MutationStatus.pending,
     ));
     await _auditLifecycle('cancelled', doc.docType, doc.id, ctx);
-    _emitter.publish(DocumentCancelledEvent(
+    await _emitter.publish(DocumentCancelledEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
   }

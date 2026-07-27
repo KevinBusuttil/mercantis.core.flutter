@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../document_engine/document.dart';
 
 class DocumentSavedEvent {
@@ -57,22 +59,28 @@ class SubscriptionToken {
   void cancel() => _cancel();
 }
 
+/// Synchronous-completion event bus: [publish] AWAITS every handler, so
+/// work hung off an event (GL derivation on submit, automations on save)
+/// is finished by the time the emitting operation returns. Fire-and-forget
+/// handlers previously raced their observers — a submit would return while
+/// the ledger was still posting, and anything reading the GL immediately
+/// after (tests, a dashboard refresh) saw a partial book.
 class EventEmitter {
   final Map<Type, List<dynamic>> _handlers = {};
 
-  SubscriptionToken subscribe<E>(void Function(E event) handler) {
+  SubscriptionToken subscribe<E>(FutureOr<void> Function(E event) handler) {
     _handlers.putIfAbsent(E, () => []).add(handler);
     return SubscriptionToken(() {
       _handlers[E]?.remove(handler);
     });
   }
 
-  void publish<E>(E event) {
+  Future<void> publish<E>(E event) async {
     final handlers = _handlers[E];
     if (handlers == null) return;
     for (final handler in List.from(handlers)) {
       try {
-        (handler as void Function(E))(event);
+        await (handler as FutureOr<void> Function(E))(event);
       } catch (_) {
         // Isolate handler errors
       }

@@ -203,7 +203,7 @@ class WorkflowEngine {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
 
-    _emitter?.publish(WorkflowTransitionEvent(
+    await _emitter?.publish(WorkflowTransitionEvent(
       documentId: document.id,
       workflow: workflow.id,
       fromState: currentState,
