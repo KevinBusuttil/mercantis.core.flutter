@@ -62,7 +62,24 @@ class SyncEngine {
         return;
       }
 
-      final mutations = rows.map(MutationRecord.fromDbRow).toList();
+      // A document awaiting manual conflict resolution must not ship its
+      // local edits — the user may yet pick "theirs", and pushing "mine"
+      // first would spread the very version they might discard. Held rows
+      // stay pending; resolution clears the conflict and the next cycle
+      // ships (keep-mine) or has nothing to ship (take-theirs).
+      final conflictRows = await _db.query('sync_conflicts',
+          columns: ['doctype', 'document_id']);
+      final held = {
+        for (final r in conflictRows) '${r['doctype']}|${r['document_id']}',
+      };
+      final mutations = rows
+          .map(MutationRecord.fromDbRow)
+          .where((m) => !held.contains('${m.docType}|${m.documentId}'))
+          .toList();
+      if (mutations.isEmpty) {
+        _stateController.add(SyncEngineState.idle);
+        return;
+      }
       final ids = mutations.map((m) => m.id).toList();
       await _markStatus(ids, MutationStatus.pushing);
 
@@ -88,10 +105,28 @@ class SyncEngine {
         rethrow;
       }
       await _markStatus(ids, MutationStatus.pushed);
+      await _markDocumentsSynced(mutations);
       _stateController.add(SyncEngineState.idle);
     } catch (e) {
       _stateController.add(SyncEngineState.error);
       rethrow;
+    }
+  }
+
+  /// A successful push means the local edits are on the server — flip the
+  /// affected documents from `local` to `synced`. Without this a document
+  /// authored on this device stays `local` forever (its own echoes are
+  /// filtered on pull), which would make it indistinguishable from
+  /// "edited since last sync" — the signal conflict detection keys on.
+  Future<void> _markDocumentsSynced(List<MutationRecord> mutations) async {
+    for (final m in mutations) {
+      if (m.documentId.isEmpty) continue;
+      await _db.update(
+        'documents',
+        {'sync_state': SyncState.synced.name},
+        where: 'id = ? AND doctype = ? AND sync_state = ?',
+        whereArgs: [m.documentId, m.docType, SyncState.local.name],
+      );
     }
   }
 
@@ -146,28 +181,40 @@ class SyncEngine {
       final outcome = _resolver.resolve(mutation, local, policy);
       if (outcome == ConflictOutcome.rejectRemote) return;
       if (outcome == ConflictOutcome.requiresManualResolution) {
-        // Mark the local document conflicted AND keep the losing remote
-        // candidate (Phase 0.10): without it there is nothing to offer the
-        // user as "theirs" — the mutation is gone once the cursor advances.
-        if (local != null) {
-          await _db.update(
-            'documents',
-            {'sync_state': SyncState.conflict.name},
-            where: 'id = ?',
-            whereArgs: [local.id],
-          );
-          await _db.insert(
-            'sync_conflicts',
-            {
-              'document_id': mutation.documentId,
-              'doctype': mutation.docType,
-              'remote_mutation': jsonEncode(mutation.toWireJson()),
-              'detected_at': DateTime.now().millisecondsSinceEpoch,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+        // Both sides "edited" but to the same content — routine for
+        // deterministic seed records (every device lays down the same EUR /
+        // Main Store / chart of accounts) and harmless everywhere else.
+        // Apply as a fast-forward instead of raising ~70 bogus conflicts
+        // at a device's first join.
+        final equivalent =
+            local != null && await _contentEquivalent(mutation, local);
+        if (!equivalent) {
+          // Mark the local document conflicted AND keep the losing remote
+          // candidate (Phase 0.10): without it there is nothing to offer
+          // the user as "theirs" — the mutation is gone once the cursor
+          // advances.
+          if (local != null) {
+            await _db.update(
+              'documents',
+              {'sync_state': SyncState.conflict.name},
+              where: 'id = ?',
+              whereArgs: [local.id],
+            );
+            await _db.insert(
+              'sync_conflicts',
+              {
+                'document_id': mutation.documentId,
+                'doctype': mutation.docType,
+                'remote_mutation': jsonEncode(mutation.toWireJson()),
+                'detected_at': DateTime.now().millisecondsSinceEpoch,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+          return;
         }
-        return;
+        // Equivalent content falls through to the ordinary apply, which
+        // also flips the document to `synced`.
       }
     }
 
@@ -233,6 +280,101 @@ class SyncEngine {
       default:
         break;
     }
+  }
+
+  /// True when the remote candidate would not change what the user sees:
+  /// same business payload, docstatus, and company, and — when the mutation
+  /// carries child rows — the same children. Sync bookkeeping (timestamps,
+  /// sync_state, sync_version) is ignored, and scalars compare by string
+  /// form so a legacy stringly flag equals its normalized int.
+  Future<bool> _contentEquivalent(
+      MutationRecord mutation, Document local) async {
+    if (mutation.type != MutationType.createDocument &&
+        mutation.type != MutationType.updateDocument) {
+      return false;
+    }
+    final remotePayload = _decodePayloadMap(mutation.payload['payload']);
+    if (remotePayload == null) return false;
+    if (!_looselyEqualMaps(remotePayload, local.payload)) return false;
+    if ('${mutation.payload['docstatus'] ?? 0}' != '${local.docStatus}') {
+      return false;
+    }
+    if ('${mutation.payload['company'] ?? ''}' != (local.company ?? '')) {
+      return false;
+    }
+
+    final children = mutation.payload['__children'];
+    if (children is! Map) return true;
+    final remoteTables = <String, List<Map<String, dynamic>>>{};
+    for (final entry in children.entries) {
+      final rows = entry.value;
+      if (rows is! List) continue;
+      final list = <Map<String, dynamic>>[];
+      for (final row in rows) {
+        if (row is! Map) return false;
+        list.add(_decodePayloadMap(row['payload']) ?? const {});
+      }
+      if (list.isNotEmpty) remoteTables['${entry.key}'] = list;
+    }
+    final localRows = await _db.query(
+      'document_children',
+      where: 'parent_id = ?',
+      whereArgs: [local.id],
+      orderBy: 'row_index ASC',
+    );
+    final localTables = <String, List<Map<String, dynamic>>>{};
+    for (final row in localRows) {
+      localTables
+          .putIfAbsent('${row['table_name']}', () => [])
+          .add(_decodePayloadMap(row['payload']) ?? const {});
+    }
+    if (remoteTables.length != localTables.length) return false;
+    for (final entry in remoteTables.entries) {
+      final localList = localTables[entry.key];
+      if (localList == null || localList.length != entry.value.length) {
+        return false;
+      }
+      for (var i = 0; i < localList.length; i++) {
+        if (!_looselyEqualMaps(entry.value[i], localList[i])) return false;
+      }
+    }
+    return true;
+  }
+
+  static Map<String, dynamic>? _decodePayloadMap(dynamic raw) {
+    if (raw is Map) return raw.cast<String, dynamic>();
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return decoded.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Loose equality: null and absent are the same, scalars compare by
+  /// string form, nested maps/lists recurse.
+  static bool _looselyEqualMaps(
+      Map<String, dynamic> a, Map<String, dynamic> b) {
+    for (final k in {...a.keys, ...b.keys}) {
+      if (!_looselyEqualValues(a[k], b[k])) return false;
+    }
+    return true;
+  }
+
+  static bool _looselyEqualValues(dynamic a, dynamic b) {
+    if (a is Map && b is Map) {
+      return _looselyEqualMaps(
+          a.cast<String, dynamic>(), b.cast<String, dynamic>());
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_looselyEqualValues(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return '${a ?? ''}' == '${b ?? ''}';
   }
 
   /// Applies a remote submit/cancel. Beyond the docstatus flip, the
@@ -367,6 +509,7 @@ class SyncEngine {
       try {
         await _cloudAdapter.push([mutation]);
         await _markStatus([mutation.id], MutationStatus.pushed);
+        await _markDocumentsSynced([mutation]);
       } catch (e) {
         if (_isPermanentRejection(e)) {
           await _markStatus([mutation.id], MutationStatus.failed);

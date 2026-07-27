@@ -23,13 +23,19 @@ class ConflictResolver {
             : ConflictOutcome.rejectRemote;
 
       case ConflictResolution.versionCheckedMerge:
+        // Manual resolution ONLY when both sides actually changed the
+        // document: the local copy carries edits that have not shipped
+        // (sync_state local/pushing — the push marks documents synced on
+        // success) or is already flagged conflicted (a newer remote
+        // candidate replaces the stored one). A clean local copy means
+        // the remote edit is a plain fast-forward and applies silently —
+        // comparing versions here would flag every ordinary update, which
+        // is why this policy was previously unusable.
         if (local == null) return ConflictOutcome.acceptRemote;
-        if (local.syncVersion != null &&
-            remote.syncVersion != null &&
-            local.syncVersion != remote.syncVersion) {
-          return ConflictOutcome.requiresManualResolution;
+        if (local.syncState == SyncState.synced) {
+          return ConflictOutcome.acceptRemote;
         }
-        return ConflictOutcome.acceptRemote;
+        return ConflictOutcome.requiresManualResolution;
     }
   }
 }
