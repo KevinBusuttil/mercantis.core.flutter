@@ -74,12 +74,13 @@ void main() {
         syncVersion: syncVersion,
       );
 
-  /// A local document at sync version 5, then a remote candidate at
-  /// version 9 — the version-checked policy demands a human.
+  /// A local document carrying unshipped edits ("mine",
+  /// `sync_state=local`), then a remote candidate with different content
+  /// ("theirs") — both sides changed it, so the policy demands a human.
   Future<void> seedConflict() async {
     await database.db.insert(
       'documents',
-      {...envelope('mine', '5'), 'sync_state': 'synced'},
+      envelope('mine', '5'), // sync_state 'local' — unshipped edits
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     await sync.applyRemoteMutations([remoteUpdate('theirs', '9')]);
@@ -177,4 +178,119 @@ void main() {
     await service.takeTheirs('Note', 'missing');
     expect(await service.count(), 0);
   });
+
+  test('a clean local copy fast-forwards — no conflict for a plain update',
+      () async {
+    await database.db.insert(
+      'documents',
+      {...envelope('old', '5'), 'sync_state': 'synced'},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await sync.applyRemoteMutations([remoteUpdate('new', '9')]);
+
+    final doc = (await database.db
+            .query('documents', where: 'id = ?', whereArgs: ['N-1']))
+        .single;
+    expect(jsonDecode(doc['payload'] as String)['title'], 'new');
+    expect(doc['sync_state'], 'synced');
+    expect(await service.count(), 0);
+  });
+
+  test('identical content applies silently even when both sides "edited"',
+      () async {
+    // Deterministic seeds: both devices lay down the same record. The
+    // local copy is unshipped (`local`), the remote candidate identical —
+    // a conflict here would greet every joining device with ~70 of them.
+    await database.db.insert(
+      'documents',
+      envelope('same', '5'),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await sync.applyRemoteMutations([remoteUpdate('same', '9')]);
+
+    final doc = (await database.db
+            .query('documents', where: 'id = ?', whereArgs: ['N-1']))
+        .single;
+    expect(doc['sync_state'], 'synced');
+    expect(doc['sync_version'], '9');
+    expect(await service.count(), 0);
+  });
+
+  test('push holds a conflicted document but ships the rest', () async {
+    await seedConflict();
+
+    final shipped = <MutationRecord>[];
+    final pushSync = SyncEngine(
+      database: database.db,
+      registry: registry,
+      cloudAdapter: _RecordingAdapter(shipped),
+    );
+    addTearDown(pushSync.dispose);
+
+    Future<void> enqueue(String docId, String title) =>
+        pushSync.appendMutation(MutationRecord(
+          id: 'mut-$docId',
+          type: MutationType.updateDocument,
+          docType: 'Note',
+          documentId: docId,
+          payload: {...envelope(title, null), 'id': docId},
+          deviceId: 'devA',
+          userId: 'u',
+          localTimestamp: DateTime.now(),
+          status: MutationStatus.pending,
+        ));
+    await enqueue('N-1', 'mine'); // conflicted — must be held
+    await enqueue('N-2', 'other'); // unrelated — must ship
+
+    await pushSync.pushPendingMutations();
+
+    expect(shipped.map((m) => m.documentId), ['N-2']);
+    // The held mutation stays pending for after the user resolves.
+    final held = await database.db.query('sync_queue',
+        where: 'document_id = ? AND status = ?',
+        whereArgs: ['N-1', MutationStatus.pending.name]);
+    expect(held, hasLength(1));
+    expect(await service.count(), 1); // conflict untouched
+  });
+
+  test('a successful push flips the shipped documents to synced', () async {
+    await database.db.insert(
+      'documents',
+      envelope('mine', null), // sync_state 'local'
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    final pushSync = SyncEngine(
+      database: database.db,
+      registry: registry,
+      cloudAdapter: _RecordingAdapter([]),
+    );
+    addTearDown(pushSync.dispose);
+    await pushSync.appendMutation(MutationRecord(
+      id: 'mut-ship',
+      type: MutationType.updateDocument,
+      docType: 'Note',
+      documentId: 'N-1',
+      payload: envelope('mine', null),
+      deviceId: 'devA',
+      userId: 'u',
+      localTimestamp: DateTime.now(),
+      status: MutationStatus.pending,
+    ));
+
+    await pushSync.pushPendingMutations();
+
+    final doc = (await database.db
+            .query('documents', where: 'id = ?', whereArgs: ['N-1']))
+        .single;
+    expect(doc['sync_state'], 'synced');
+  });
+}
+
+class _RecordingAdapter extends NoOpCloudAdapter {
+  const _RecordingAdapter(this.shipped);
+  final List<MutationRecord> shipped;
+
+  @override
+  Future<void> push(List<MutationRecord> mutations) async =>
+      shipped.addAll(mutations);
 }
