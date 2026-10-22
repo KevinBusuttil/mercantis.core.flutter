@@ -29,6 +29,7 @@ class BackupRequest {
     this.attachmentsRoot,
     this.configFiles = const {},
     this.businessSummary = const {},
+    this.summarizeSnapshot,
   });
 
   /// The LIVE database. It is never copied byte-for-byte; see
@@ -52,6 +53,14 @@ class BackupRequest {
   /// Host-computed business facts (company, document counts, ledger totals)
   /// recorded so a restore can prove it brought back the same books.
   final Map<String, Object?> businessSummary;
+
+  /// Computes the business summary from the consistent snapshot that goes
+  /// into the backup. Prefer it to [businessSummary]: a summary taken from
+  /// the live database can include writes made after the snapshot, and a
+  /// restore that must reproduce it to the cent would then be refused.
+  /// When set, it replaces [businessSummary].
+  final Future<Map<String, Object?>> Function(DatabaseExecutor snapshot)?
+      summarizeSnapshot;
 }
 
 /// An attachment row whose bytes could not be included.
@@ -230,12 +239,18 @@ class AtlasBackupService {
       await faultHook?.call('snapshot');
 
       // Read the attachment list from the SNAPSHOT, so files and rows agree.
-      final snapshot = await request.factory.openDatabase(snapshotPath);
+      // Read-only: neither the reads nor a host summarizer can change what
+      // is archived.
+      final snapshot = await request.factory.openDatabase(snapshotPath,
+          options: OpenDatabaseOptions(readOnly: true));
       final List<Map<String, Object?>> attachmentRows;
       final int schemaVersion;
+      final Map<String, Object?> businessSummary;
       try {
         schemaVersion = await MigrationRunner.schemaVersion(snapshot);
         attachmentRows = await _attachmentRows(snapshot);
+        businessSummary = await request.summarizeSnapshot?.call(snapshot) ??
+            request.businessSummary;
       } finally {
         await snapshot.close();
       }
@@ -313,7 +328,7 @@ class AtlasBackupService {
           'included': included.length,
         },
         'missing_attachments': [for (final m in missing) m.toJson()],
-        'business_summary': request.businessSummary,
+        'business_summary': businessSummary,
       };
 
       final header = BackupHeader(

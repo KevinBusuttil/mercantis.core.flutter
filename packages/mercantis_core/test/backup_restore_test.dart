@@ -314,6 +314,68 @@ void main() {
     });
   });
 
+  test('the business summary describes the snapshot, not later live writes',
+      () async {
+    // A document saved while the backup is being written must not reach the
+    // summary, or the restore (which re-computes it) would be refused.
+    service.faultHook = (step) async {
+      if (step == 'snapshot') {
+        await engine.save(invoice('INV-LATE'), testRoles);
+      }
+    };
+    final out = p.join(root.path, 'books.atlasbackup');
+    await service.createBackup(
+      BackupRequest(
+        database: db.db,
+        factory: databaseFactoryFfi,
+        producer: 'Neuradix Atlas',
+        appVersion: '1.0.0-test',
+        attachmentsRoot: p.join(dataDir, 'attachments'),
+        businessSummary: const {'ignored': true},
+        summarizeSnapshot: (snapshot) async => {
+          'documents': (await snapshot.rawQuery(
+                  "SELECT COUNT(*) AS n FROM documents WHERE doctype = 'Inv'"))
+              .single['n'],
+        },
+      ),
+      outputPath: out,
+      passphrase: passphrase,
+      kdf: fastKdf,
+    );
+    service.faultHook = null;
+    expect(await engine.fetch('Inv', 'INV-LATE'), isNotNull);
+    final staged = await service.stageRestore(
+      backupPath: out,
+      passphrase: passphrase,
+      stagingDirectory: p.join(root.path, 'staging'),
+      factory: databaseFactoryFfi,
+    );
+    expect(staged.businessSummary, {'documents': 5});
+  });
+
+  test('a summarizer cannot write to the snapshot being archived', () async {
+    await expectLater(
+      service.createBackup(
+        BackupRequest(
+          database: db.db,
+          factory: databaseFactoryFfi,
+          producer: 'Neuradix Atlas',
+          appVersion: '1.0.0-test',
+          attachmentsRoot: p.join(dataDir, 'attachments'),
+          summarizeSnapshot: (snapshot) async {
+            await snapshot.delete('documents');
+            return const {};
+          },
+        ),
+        outputPath: p.join(root.path, 'books.atlasbackup'),
+        passphrase: passphrase,
+        kdf: fastKdf,
+      ),
+      throwsA(anything),
+    );
+    expect(File(p.join(root.path, 'books.atlasbackup')).existsSync(), isFalse);
+  });
+
   test('a missing attachment is reported, not silently dropped', () async {
     final rows = await db.db.query('attachments', where: 'document_id = ?',
         whereArgs: ['INV-1']);
