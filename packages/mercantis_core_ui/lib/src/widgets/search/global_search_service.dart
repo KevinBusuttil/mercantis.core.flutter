@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../workspace/workspace_descriptor.dart';
+import '../../shell/list_location.dart';
 import '../../workspace/workspace_registry.dart';
 
 class GlobalSearchResult {
@@ -74,7 +75,7 @@ class GlobalSearchService {
   }
 
   String? _routeForItem(String workspaceId, WorkspaceItem item) {
-    if (item is DocTypeWorkspaceItem) return '/list/${item.docType}';
+    if (item is DocTypeWorkspaceItem) return docTypeItemLocation(item);
     if (item is DashboardWorkspaceItem) return '/w/$workspaceId';
     if (item is CustomWorkspaceItem) return '/w/$workspaceId/${item.routeName}';
     return null;

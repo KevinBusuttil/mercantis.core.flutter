@@ -27,18 +27,25 @@ class AtlasBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final accent = accentColor ?? cs.primary;
-    return NavigationBar(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onSelected,
-      indicatorColor: accent.withValues(alpha: 0.16),
-      destinations: [
-        for (final d in destinations)
-          NavigationDestination(
-            icon: Icon(d.icon),
-            selectedIcon: Icon(d.selectedIcon),
-            label: d.label,
-          ),
-      ],
+    // Five labels share a phone's width, so their text scales only a little
+    // (as platform tab bars do): beyond that they break mid-word. Long-press
+    // shows each label in a tooltip; screen readers read it as normal.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.1,
+      child: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onSelected,
+        indicatorColor: accent.withValues(alpha: 0.16),
+        destinations: [
+          for (final d in destinations)
+            NavigationDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: d.label,
+              tooltip: d.tooltip,
+            ),
+        ],
+      ),
     );
   }
 }

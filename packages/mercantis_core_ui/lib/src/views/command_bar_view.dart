@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../shell/breakpoints.dart';
 import '../theme/tokens/spacing.dart';
+import 'doc_type_presentation.dart';
 
 /// The record lifecycle command bar — Save / Submit / Cancel / Amend plus any
 /// host-contributed actions. Pinned to the bottom of the record workspace (via
@@ -28,6 +29,7 @@ class CommandBarView extends StatelessWidget {
     this.onDelete,
     this.error,
     this.extraActions = const <Widget>[],
+    this.labels = LifecycleLabels.engine,
   });
 
   final String docTypeName;
@@ -50,6 +52,9 @@ class CommandBarView extends StatelessWidget {
   /// the built-in lifecycle actions. Pre-built widgets so this view stays free
   /// of any module dependency.
   final List<Widget> extraActions;
+
+  /// The lifecycle words (presentation only — gating below is unchanged).
+  final LifecycleLabels labels;
 
   bool get _isDraft => docStatus == 0;
   bool get _isSubmitted => docStatus == 1;
@@ -89,8 +94,8 @@ class CommandBarView extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  if (_isSubmitted) const Chip(label: Text('Submitted')),
-                  if (_isCancelled) const Chip(label: Text('Cancelled')),
+                  if (_isSubmitted) Chip(label: Text(labels.submitted)),
+                  if (_isCancelled) Chip(label: Text(labels.cancelled)),
                   const Spacer(),
                   if (isSaving)
                     const SizedBox(
@@ -120,7 +125,7 @@ class CommandBarView extends StatelessWidget {
       }
       if (isSubmittable && documentName != null && !isDirty) {
         widgets.add(
-            FilledButton(onPressed: onSubmit, child: const Text('Submit')));
+            FilledButton(onPressed: onSubmit, child: Text(labels.submit)));
       }
       // Destructive: delete a saved draft. Only a persisted draft can be
       // deleted (a brand-new unsaved form has nothing to remove).
@@ -135,11 +140,11 @@ class CommandBarView extends StatelessWidget {
     }
     if (_isSubmitted && onCancel != null) {
       widgets.add(
-          OutlinedButton(onPressed: onCancel, child: const Text('Cancel')));
+          OutlinedButton(onPressed: onCancel, child: Text(labels.cancel)));
     }
     if (_isCancelled && onAmend != null) {
       widgets
-          .add(OutlinedButton(onPressed: onAmend, child: const Text('Amend')));
+          .add(OutlinedButton(onPressed: onAmend, child: Text(labels.amend)));
     }
     return widgets;
   }

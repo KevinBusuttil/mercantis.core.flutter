@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/tokens/radius.dart';
 import '../theme/tokens/spacing.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/status_chip.dart';
 
 /// A swipe accelerator on a list row: swiping the row reveals [label]/[icon] and,
@@ -63,6 +64,8 @@ class DocumentListPane extends StatelessWidget {
     this.newLabel,
     this.trailingActions = const [],
     this.onRefresh,
+    this.emptyTitle = 'No documents',
+    this.emptyMessage,
   });
 
   final String title;
@@ -80,6 +83,11 @@ class DocumentListPane extends StatelessWidget {
   /// Pull-to-refresh handler. When set, the list can be pulled down to reload
   /// (even when empty); the spinner shows until the returned future completes.
   final Future<void> Function()? onRefresh;
+
+  /// Empty-list headline and guidance (what to do next). The pane's own "New"
+  /// button stays the action, so the empty state never adds a second one.
+  final String emptyTitle;
+  final String? emptyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -166,10 +174,8 @@ class DocumentListPane extends StatelessWidget {
         ? ListView(
             physics: physics,
             children: [
-              const SizedBox(height: 96),
-              Center(
-                child: Text('No documents', style: theme.textTheme.bodySmall),
-              ),
+              const SizedBox(height: 64),
+              EmptyState(title: emptyTitle, message: emptyMessage),
             ],
           )
         : ListView.separated(

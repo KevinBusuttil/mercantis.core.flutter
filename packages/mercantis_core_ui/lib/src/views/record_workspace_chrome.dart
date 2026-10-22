@@ -7,6 +7,7 @@ import '../widgets/print_record_button.dart';
 import '../widgets/search/global_search.dart';
 import 'command_bar_view.dart';
 import 'customize_fields_sheet.dart';
+import 'doc_type_presentation.dart';
 
 /// At or above this width the record keeps Timeline + Attachments visible as a
 /// persistent side panel next to the form (desktop / large tablet-landscape)
@@ -36,6 +37,7 @@ class RecordWorkspaceChrome extends StatefulWidget {
     this.onDelete,
     this.error,
     this.extraActions = const <Widget>[],
+    this.lifecycleLabels = LifecycleLabels.engine,
   });
 
   final String docTypeName;
@@ -62,6 +64,9 @@ class RecordWorkspaceChrome extends StatefulWidget {
 
   /// Host-contributed command-bar actions, forwarded to [CommandBarView].
   final List<Widget> extraActions;
+
+  /// Lifecycle words for the command bar (presentation only).
+  final LifecycleLabels lifecycleLabels;
   final Widget child;
 
   @override
@@ -159,6 +164,7 @@ class _RecordWorkspaceChromeState extends State<RecordWorkspaceChrome>
             onDelete: widget.onDelete,
             error: widget.error,
             extraActions: widget.extraActions,
+            labels: widget.lifecycleLabels,
           ),
         );
       },
