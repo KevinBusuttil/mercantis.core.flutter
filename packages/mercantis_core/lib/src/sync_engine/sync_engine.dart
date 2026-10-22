@@ -40,8 +40,12 @@ class SyncEngine {
         _resolver = resolver ?? ConflictResolver(),
         _attachmentStore = attachmentStore;
 
-  Future<void> appendMutation(MutationRecord record) async {
-    await _db.insert(
+  /// Queue [record] for push. Pass [executor] (an open transaction) to commit
+  /// the mutation atomically with the write it describes, so a crash can never
+  /// leave a saved document without its queued mutation or vice versa.
+  Future<void> appendMutation(MutationRecord record,
+      {DatabaseExecutor? executor}) async {
+    await (executor ?? _db).insert(
       'sync_queue',
       record.toDbRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -67,8 +71,8 @@ class SyncEngine {
       // first would spread the very version they might discard. Held rows
       // stay pending; resolution clears the conflict and the next cycle
       // ships (keep-mine) or has nothing to ship (take-theirs).
-      final conflictRows = await _db.query('sync_conflicts',
-          columns: ['doctype', 'document_id']);
+      final conflictRows = await _db
+          .query('sync_conflicts', columns: ['doctype', 'document_id']);
       final held = {
         for (final r in conflictRows) '${r['doctype']}|${r['document_id']}',
       };

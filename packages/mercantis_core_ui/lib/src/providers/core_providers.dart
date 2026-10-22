@@ -9,6 +9,29 @@ import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:mercantis_core/mercantis_core.dart';
 
+/// The SQLite factory for this platform (FFI on desktop, the plugin on
+/// mobile). Backup and restore open snapshot files through the same factory.
+DatabaseFactory platformDatabaseFactory() => _platformFactory();
+
+/// File names inside the app-support directory. Backup/restore and startup
+/// recovery must agree with the providers below on these.
+const atlasDatabaseFileName = 'mercantis.db';
+const atlasAttachmentsFolderName = 'attachments';
+const atlasRestoreJournalFolderName = 'restore-journal';
+const atlasPreRestoreFolderName = 'pre-restore-copy';
+
+/// Where this install's business data lives (database, attachments, restore
+/// journal) under [dataDirectory].
+RestoreTarget atlasRestoreTarget(String dataDirectory) => RestoreTarget(
+      databasePath: '$dataDirectory/$atlasDatabaseFileName',
+      attachmentsRoot: '$dataDirectory/$atlasAttachmentsFolderName',
+      journalDirectory: '$dataDirectory/$atlasRestoreJournalFolderName',
+    );
+
+/// The app-support directory holding the business data.
+final atlasDataDirectoryProvider = FutureProvider<String>(
+    (ref) async => (await getApplicationSupportDirectory()).path);
+
 DatabaseFactory _platformFactory() {
   if (kIsWeb) throw UnsupportedError('Web is not supported');
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -19,10 +42,15 @@ DatabaseFactory _platformFactory() {
 }
 
 final mercantisDatabaseProvider = FutureProvider<MercantisDatabase>((ref) async {
-  final dir = await getApplicationSupportDirectory();
+  final dir = await ref.watch(atlasDataDirectoryProvider.future);
+  // A restore cut short by a crash or power loss is rolled back (or, if it had
+  // committed, finished) BEFORE the database is opened, so the app never runs
+  // on half-swapped data.
+  AtlasBackupService.recoverInterruptedRestore(atlasRestoreTarget(dir),
+      safetyCopyDirectory: '$dir/$atlasPreRestoreFolderName');
   return MercantisDatabase.open(
     factory: _platformFactory(),
-    path: '${dir.path}/mercantis.db',
+    path: '$dir/$atlasDatabaseFileName',
   );
 });
 
@@ -97,8 +125,11 @@ final workflowEngineProvider = FutureProvider<WorkflowEngine>((ref) async {
 /// the [SyncEngine] (replicates bytes, ADR-048). Both must use the same root.
 final attachmentStoreProvider = FutureProvider<AttachmentStore>((ref) async {
   try {
-    final dir = await getApplicationSupportDirectory();
-    return AttachmentStore('${dir.path}/attachments');
+    final dir = await ref.watch(atlasDataDirectoryProvider.future);
+    final store = AttachmentStore('$dir/$atlasAttachmentsFolderName');
+    // Remove leftovers of attachment writes interrupted by a crash.
+    store.sweepPartials();
+    return store;
   } catch (_) {
     // No path_provider platform (e.g. plain widget tests): fall back to a temp
     // dir so the engine still constructs — the sync engine reads this provider.

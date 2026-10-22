@@ -1,19 +1,57 @@
 import 'package:sqflite_common/sqflite.dart';
 
+/// Thrown when a database was written by a newer Atlas build than this one.
+/// Opening it would run old code against a schema it does not understand, so
+/// the open is refused and the file is left untouched.
+class UnsupportedSchemaVersionException implements Exception {
+  const UnsupportedSchemaVersionException(this.found, this.supported);
+
+  /// The schema version recorded in the database.
+  final int found;
+
+  /// The newest schema version this build can open.
+  final int supported;
+
+  @override
+  String toString() =>
+      'This business file was created by a newer version of Atlas (schema '
+      'v$found; this version supports up to v$supported). Update Atlas before '
+      'opening it.';
+}
+
 class MigrationRunner {
+  /// The newest schema version this build knows how to create and open.
+  static const latestVersion = 8;
+
+  static final Map<int, Future<void> Function(DatabaseExecutor db)> _steps = {
+    1: _v1,
+    2: _v2,
+    3: _v3,
+    4: _v4,
+    5: _v5,
+    6: _v6,
+    7: _v7,
+    8: _v8,
+  };
+
+  /// Brings [db] up to [latestVersion]. Each step's DDL and its version bump
+  /// commit in ONE transaction, so a crash or a failed statement mid-step
+  /// leaves the database at the previous version and the step simply re-runs
+  /// on the next open. (Before, a step could apply its DDL and die before
+  /// recording the new version, and the re-run then failed on the half-applied
+  /// change.) A database from a newer build is refused, never "migrated".
   static Future<void> migrate(Database db) async {
-    final version = await _schemaVersion(db);
-    if (version < 1) await _v1(db);
-    if (version < 2) await _v2(db);
-    if (version < 3) await _v3(db);
-    if (version < 4) await _v4(db);
-    if (version < 5) await _v5(db);
-    if (version < 6) await _v6(db);
-    if (version < 7) await _v7(db);
-    if (version < 8) await _v8(db);
+    final version = await schemaVersion(db);
+    if (version > latestVersion) {
+      throw UnsupportedSchemaVersionException(version, latestVersion);
+    }
+    for (var v = version + 1; v <= latestVersion; v++) {
+      await db.transaction((txn) => _steps[v]!(txn));
+    }
   }
 
-  static Future<int> _schemaVersion(Database db) async {
+  /// The schema version recorded in [db]; 0 for an empty database.
+  static Future<int> schemaVersion(DatabaseExecutor db) async {
     try {
       final rows = await db.query('schema_version');
       if (rows.isEmpty) return 0;
@@ -23,12 +61,21 @@ class MigrationRunner {
     }
   }
 
-  static Future<void> _v1(Database db) async {
+  static Future<bool> _hasColumn(
+      DatabaseExecutor db, String table, String column) async {
+    final cols = await db.rawQuery('PRAGMA table_info($table)');
+    return cols.any((c) => c['name'] == column);
+  }
+
+  static Future<void> _v1(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS schema_version (
         version INTEGER NOT NULL
       )
     ''');
+    // A database that crashed inside v1 on an older build may already hold the
+    // table; never record two version rows.
+    await db.delete('schema_version');
     await db.insert('schema_version', {'version': 1});
 
     await db.execute('''
@@ -164,10 +211,13 @@ class MigrationRunner {
   /// field after any existing field on the form. `NULL` means "append to
   /// the end of the form", matching the v1 behaviour for any pre-existing
   /// rows on upgrade.
-  static Future<void> _v2(Database db) async {
-    await db.execute(
-      'ALTER TABLE custom_fields ADD COLUMN insert_after TEXT',
-    );
+  static Future<void> _v2(DatabaseExecutor db) async {
+    // Tolerate a column left behind by an older, non-transactional run.
+    if (!await _hasColumn(db, 'custom_fields', 'insert_after')) {
+      await db.execute(
+        'ALTER TABLE custom_fields ADD COLUMN insert_after TEXT',
+      );
+    }
     await db.update('schema_version', {'version': 2});
   }
 
@@ -178,7 +228,7 @@ class MigrationRunner {
   /// reserved (and how far into it the device has consumed), so offline
   /// multi-device saves draw from non-overlapping ranges and numbers are never
   /// reused after a delete.
-  static Future<void> _v3(Database db) async {
+  static Future<void> _v3(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS naming_block_allocations (
         series TEXT PRIMARY KEY,
@@ -205,7 +255,7 @@ class MigrationRunner {
   /// `SqliteNotificationLog` and `NotificationInbox`. `read_at` is null until
   /// the in-app inbox marks an entry read. Timestamps are epoch milliseconds,
   /// matching the rest of the Dart schema.
-  static Future<void> _v4(Database db) async {
+  static Future<void> _v4(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS notification_log (
         id TEXT PRIMARY KEY NOT NULL,
@@ -235,7 +285,7 @@ class MigrationRunner {
   /// metadata only. `field_key` is nullable: null is a general document
   /// attachment, non-null binds it to a `FieldType.attach` field for typed UI.
   /// `uploaded_at` is epoch millis, matching the rest of the schema.
-  static Future<void> _v5(Database db) async {
+  static Future<void> _v5(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS attachments (
         id TEXT PRIMARY KEY NOT NULL,
@@ -263,7 +313,7 @@ class MigrationRunner {
   /// Posting batches (C2) — the atomic-posting ledger: one row per posting
   /// attempt for a source document, with status / idempotency / reversal
   /// linkage. Core owns the primitive; Hub owns the accounting rules.
-  static Future<void> _v6(Database db) async {
+  static Future<void> _v6(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS posting_batches (
         id TEXT PRIMARY KEY NOT NULL,
@@ -294,7 +344,7 @@ class MigrationRunner {
   /// inbox resolve broadcast read state per operator without touching the shared
   /// column. Addressed notifications keep using `read_at`. `viewer_id` is the
   /// operator's stable user id; `read_at` is epoch millis.
-  static Future<void> _v7(Database db) async {
+  static Future<void> _v7(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS notification_broadcast_receipt (
         notification_id TEXT NOT NULL,
@@ -316,7 +366,7 @@ class MigrationRunner {
   /// the remote candidate (full wire-JSON mutation) so ConflictService can
   /// offer keep-mine / take-theirs. One row per document: a newer remote
   /// candidate replaces the older one.
-  static Future<void> _v8(Database db) async {
+  static Future<void> _v8(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_conflicts (
         document_id TEXT NOT NULL,

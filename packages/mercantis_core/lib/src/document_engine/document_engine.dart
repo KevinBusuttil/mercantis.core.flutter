@@ -59,7 +59,8 @@ class DocumentEngine {
 
   /// Authorises [op] under [ctx]: a system context bypasses gating; otherwise the
   /// permission engine is consulted with the context's roles.
-  bool _authorized(DocumentOperation op, DocType docType, ExecutionContext ctx) =>
+  bool _authorized(
+          DocumentOperation op, DocType docType, ExecutionContext ctx) =>
       ctx.isSystemOperation ||
       _permissionEngine.canPerform(
           operation: op, on: docType, userRoles: ctx.roles);
@@ -163,95 +164,104 @@ class DocumentEngine {
       previousVersion = await _fetchRaw(doc.docType, doc.id);
     }
 
-    // Persist document
-    await _db.insert(
-      'documents',
-      doc.toDbRow(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Persist the document, its children, the audit row and the queued sync
+    // mutation in ONE transaction. Before, each was a separate statement, so a
+    // crash or a failed write between "delete old children" and "insert new
+    // children" left a saved document with no lines. Now the save lands whole
+    // or not at all.
+    await _db.transaction((txn) async {
+      await txn.insert(
+        'documents',
+        doc.toDbRow(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
-    // Save children
-    await _db.delete('document_children',
-        where: 'parent_id = ?', whereArgs: [doc.id]);
-    for (final entry in doc.children.entries) {
-      int idx = 0;
-      for (final child in entry.value) {
-        final childId = child.id.isEmpty ? _uuid.v4() : child.id;
-        child.id = childId;
-        child.rowIndex = idx++;
-        await _db.insert(
-          'document_children',
-          {
-            'id': childId,
-            'parent_id': doc.id,
-            'parent_doctype': doc.docType,
-            'table_name': entry.key,
-            'row_index': child.rowIndex,
-            'payload': jsonEncode(child.payload),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+      // Save children
+      await txn.delete('document_children',
+          where: 'parent_id = ?', whereArgs: [doc.id]);
+      for (final entry in doc.children.entries) {
+        int idx = 0;
+        for (final child in entry.value) {
+          final childId = child.id.isEmpty ? _uuid.v4() : child.id;
+          child.id = childId;
+          child.rowIndex = idx++;
+          await txn.insert(
+            'document_children',
+            {
+              'id': childId,
+              'parent_id': doc.id,
+              'parent_doctype': doc.docType,
+              'table_name': entry.key,
+              'row_index': child.rowIndex,
+              'payload': jsonEncode(child.payload),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
       }
-    }
 
-    // Write audit log entry. Parent-field diffs plus child-row diffs (C3 / P0.6)
-    // so a document's line-item edits are captured in version history too.
-    final diffs = previousVersion != null
-        ? <FieldDiff>[
-            ...DocumentVersion.computeDiff(previousVersion.payload, doc.payload),
-            ...DocumentVersion.computeChildDiffs(
-                previousVersion.children, doc.children),
-          ]
-        : <FieldDiff>[];
-    await _db.insert('audit_log', {
-      'id': _uuid.v4(),
-      'document_id': doc.id,
-      'doctype': doc.docType,
-      'action': previousVersion == null ? 'created' : 'updated',
-      'user_id': ctx.operatorId,
-      'device_id': ctx.deviceId,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'payload': jsonEncode({
-        'diffs': diffs.map((d) => d.toJson()).toList(),
-      }),
+      // Write audit log entry. Parent-field diffs plus child-row diffs (C3 / P0.6)
+      // so a document's line-item edits are captured in version history too.
+      final diffs = previousVersion != null
+          ? <FieldDiff>[
+              ...DocumentVersion.computeDiff(
+                  previousVersion.payload, doc.payload),
+              ...DocumentVersion.computeChildDiffs(
+                  previousVersion.children, doc.children),
+            ]
+          : <FieldDiff>[];
+      await txn.insert('audit_log', {
+        'id': _uuid.v4(),
+        'document_id': doc.id,
+        'doctype': doc.docType,
+        'action': previousVersion == null ? 'created' : 'updated',
+        'user_id': ctx.operatorId,
+        'device_id': ctx.deviceId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'payload': jsonEncode({
+          'diffs': diffs.map((d) => d.toJson()).toList(),
+        }),
+      });
+
+      // Append mutation record. Children travel under a reserved `__children`
+      // key (each in document_children row shape) so a peer rebuilds the full
+      // document — header + line items — on apply, not just the header.
+      await _syncEngine.appendMutation(
+          MutationRecord(
+            id: _uuid.v4(),
+            type: previousVersion == null
+                ? MutationType.createDocument
+                : MutationType.updateDocument,
+            docType: doc.docType,
+            documentId: doc.id,
+            payload: {
+              ...doc.toDbRow(),
+              '__children': {
+                for (final entry in doc.children.entries)
+                  entry.key: [
+                    // Build from the saved doc.id, not child.toDbRow(): a child added
+                    // to a brand-new document still carries the pre-save empty
+                    // parentId, and the peer would otherwise insert orphaned rows that
+                    // fetch(doc.id) can't load.
+                    for (final child in entry.value)
+                      {
+                        'id': child.id,
+                        'parent_id': doc.id,
+                        'parent_doctype': doc.docType,
+                        'table_name': entry.key,
+                        'row_index': child.rowIndex,
+                        'payload': jsonEncode(child.payload),
+                      },
+                  ],
+              },
+            },
+            deviceId: ctx.deviceId,
+            userId: ctx.operatorId,
+            localTimestamp: DateTime.now(),
+            status: MutationStatus.pending,
+          ),
+          executor: txn);
     });
-
-    // Append mutation record. Children travel under a reserved `__children`
-    // key (each in document_children row shape) so a peer rebuilds the full
-    // document — header + line items — on apply, not just the header.
-    await _syncEngine.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: previousVersion == null
-          ? MutationType.createDocument
-          : MutationType.updateDocument,
-      docType: doc.docType,
-      documentId: doc.id,
-      payload: {
-        ...doc.toDbRow(),
-        '__children': {
-          for (final entry in doc.children.entries)
-            entry.key: [
-              // Build from the saved doc.id, not child.toDbRow(): a child added
-              // to a brand-new document still carries the pre-save empty
-              // parentId, and the peer would otherwise insert orphaned rows that
-              // fetch(doc.id) can't load.
-              for (final child in entry.value)
-                {
-                  'id': child.id,
-                  'parent_id': doc.id,
-                  'parent_doctype': doc.docType,
-                  'table_name': entry.key,
-                  'row_index': child.rowIndex,
-                  'payload': jsonEncode(child.payload),
-                },
-            ],
-        },
-      },
-      deviceId: ctx.deviceId,
-      userId: ctx.operatorId,
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
 
     await _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
@@ -471,39 +481,44 @@ class DocumentEngine {
     doc.docStatus = 1;
     doc.modifiedAt = DateTime.now();
     doc.syncState = SyncState.local;
-    await _db.update(
-      'documents',
-      {
-        'payload': jsonEncode(doc.payload),
-        'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
-        'sync_state': doc.syncState.name,
-      },
-      where: 'id = ?',
-      whereArgs: [doc.id],
-    );
-
     final diffs = DocumentVersion.computeDiff(existing.payload, doc.payload);
-    await _db.insert('audit_log', {
-      'id': _uuid.v4(),
-      'document_id': doc.id,
-      'doctype': doc.docType,
-      'action': 'updated',
-      'user_id': ctx.operatorId,
-      'device_id': ctx.deviceId,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'payload': jsonEncode({'diffs': diffs.map((d) => d.toJson()).toList()}),
+    // Row, audit and sync mutation commit together (see [save]).
+    await _db.transaction((txn) async {
+      await txn.update(
+        'documents',
+        {
+          'payload': jsonEncode(doc.payload),
+          'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
+          'sync_state': doc.syncState.name,
+        },
+        where: 'id = ?',
+        whereArgs: [doc.id],
+      );
+
+      await txn.insert('audit_log', {
+        'id': _uuid.v4(),
+        'document_id': doc.id,
+        'doctype': doc.docType,
+        'action': 'updated',
+        'user_id': ctx.operatorId,
+        'device_id': ctx.deviceId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'payload': jsonEncode({'diffs': diffs.map((d) => d.toJson()).toList()}),
+      });
+      await _syncEngine.appendMutation(
+          MutationRecord(
+            id: _uuid.v4(),
+            type: MutationType.updateDocument,
+            docType: doc.docType,
+            documentId: doc.id,
+            payload: doc.toDbRow(),
+            deviceId: ctx.deviceId,
+            userId: ctx.operatorId,
+            localTimestamp: DateTime.now(),
+            status: MutationStatus.pending,
+          ),
+          executor: txn);
     });
-    await _syncEngine.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: MutationType.updateDocument,
-      docType: doc.docType,
-      documentId: doc.id,
-      payload: doc.toDbRow(),
-      deviceId: ctx.deviceId,
-      userId: ctx.operatorId,
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
     await _emitter.publish(DocumentSavedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
@@ -527,22 +542,26 @@ class DocumentEngine {
     if (existing != null && existing.docStatus == 1) {
       throw DocumentEngineError.cannotDeleteSubmitted(id);
     }
-    await _db.delete('documents',
-        where: 'id = ? AND doctype = ?', whereArgs: [id, docType]);
-    await _db
-        .delete('document_children', where: 'parent_id = ?', whereArgs: [id]);
-    await _syncEngine.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: MutationType.deleteDocument,
-      docType: docType,
-      documentId: id,
-      payload: {'id': id, 'doctype': docType},
-      deviceId: ctx.deviceId,
-      userId: ctx.operatorId,
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
-    await _auditLifecycle('deleted', docType, id, ctx);
+    await _db.transaction((txn) async {
+      await txn.delete('documents',
+          where: 'id = ? AND doctype = ?', whereArgs: [id, docType]);
+      await txn
+          .delete('document_children', where: 'parent_id = ?', whereArgs: [id]);
+      await _syncEngine.appendMutation(
+          MutationRecord(
+            id: _uuid.v4(),
+            type: MutationType.deleteDocument,
+            docType: docType,
+            documentId: id,
+            payload: {'id': id, 'doctype': docType},
+            deviceId: ctx.deviceId,
+            userId: ctx.operatorId,
+            localTimestamp: DateTime.now(),
+            status: MutationStatus.pending,
+          ),
+          executor: txn);
+      await _auditLifecycle('deleted', docType, id, ctx, executor: txn);
+    });
     await _emitter.publish(DocumentDeletedEvent(
         documentId: id, docType: docType, userId: ctx.operatorId));
   }
@@ -622,7 +641,8 @@ class DocumentEngine {
     final rowAccess = docTypeMeta?.rowAccessExpression;
     final expressions = <String>[
       if (rowAccess != null && rowAccess.isNotEmpty) rowAccess,
-      if (whereExpression != null && whereExpression.isNotEmpty) whereExpression,
+      if (whereExpression != null && whereExpression.isNotEmpty)
+        whereExpression,
     ];
     if (expressions.isNotEmpty) {
       final opId = context?.operatorId ?? userId;
@@ -662,8 +682,9 @@ class DocumentEngine {
     String documentId,
     ExecutionContext ctx, {
     Map<String, dynamic> detail = const {},
+    DatabaseExecutor? executor,
   }) async {
-    await _db.insert('audit_log', {
+    await (executor ?? _db).insert('audit_log', {
       'id': _uuid.v4(),
       'document_id': documentId,
       'doctype': docType,
@@ -711,32 +732,39 @@ class DocumentEngine {
       'docstatus': 1,
       'modified_at': modified.millisecondsSinceEpoch,
     };
-    if (inTransaction != null) {
-      await _db.transaction((txn) async {
-        await txn.update('documents', values,
-            where: 'id = ?', whereArgs: [doc.id]);
-        await inTransaction(UnitOfWork(db: txn, context: ctx));
-      });
-    } else {
-      await _db.update('documents', values, where: 'id = ?', whereArgs: [doc.id]);
-    }
-    // Mutate the in-memory doc only after the write/transaction commits, so a
+    // The status flip, the queued mutation, the audit row, every interceptor's
+    // in-transaction writes (e.g. a posting-outbox marker) and the caller's
+    // [inTransaction] callback commit together, or the submit rolls back whole.
+    await _db.transaction((txn) async {
+      await txn
+          .update('documents', values, where: 'id = ?', whereArgs: [doc.id]);
+      final uow = UnitOfWork(db: txn, context: ctx);
+      for (final interceptor in _interceptors) {
+        await interceptor.inLifecycleTransaction(
+            this, doc, docType, uow, LifecycleAction.submit);
+      }
+      if (inTransaction != null) await inTransaction(uow);
+      await _syncEngine.appendMutation(
+          MutationRecord(
+            id: _uuid.v4(),
+            type: MutationType.submitDocument,
+            docType: doc.docType,
+            documentId: doc.id,
+            payload: {'id': doc.id, 'doctype': doc.docType},
+            deviceId: ctx.deviceId,
+            userId: ctx.operatorId,
+            localTimestamp: DateTime.now(),
+            status: MutationStatus.pending,
+          ),
+          executor: txn);
+      await _auditLifecycle('submitted', doc.docType, doc.id, ctx,
+          executor: txn);
+    });
+    // Mutate the in-memory doc only after the transaction commits, so a
     // rolled-back submit leaves the document Draft in memory too.
     doc.docStatus = 1;
     doc.modifiedAt = modified;
 
-    await _syncEngine.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: MutationType.submitDocument,
-      docType: doc.docType,
-      documentId: doc.id,
-      payload: {'id': doc.id, 'doctype': doc.docType},
-      deviceId: ctx.deviceId,
-      userId: ctx.operatorId,
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
-    await _auditLifecycle('submitted', doc.docType, doc.id, ctx);
     await _emitter.publish(DocumentSubmittedEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
@@ -763,29 +791,41 @@ class DocumentEngine {
       );
     }
 
+    final modified = DateTime.now();
+    // Same all-or-nothing contract as [submit].
+    await _db.transaction((txn) async {
+      await txn.update(
+        'documents',
+        {
+          'docstatus': 2,
+          'modified_at': modified.millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [doc.id],
+      );
+      final uow = UnitOfWork(db: txn, context: ctx);
+      for (final interceptor in _interceptors) {
+        await interceptor.inLifecycleTransaction(
+            this, doc, docType, uow, LifecycleAction.cancel);
+      }
+      await _syncEngine.appendMutation(
+          MutationRecord(
+            id: _uuid.v4(),
+            type: MutationType.cancelDocument,
+            docType: doc.docType,
+            documentId: doc.id,
+            payload: {'id': doc.id, 'doctype': doc.docType},
+            deviceId: ctx.deviceId,
+            userId: ctx.operatorId,
+            localTimestamp: DateTime.now(),
+            status: MutationStatus.pending,
+          ),
+          executor: txn);
+      await _auditLifecycle('cancelled', doc.docType, doc.id, ctx,
+          executor: txn);
+    });
     doc.docStatus = 2;
-    doc.modifiedAt = DateTime.now();
-    await _db.update(
-      'documents',
-      {
-        'docstatus': 2,
-        'modified_at': doc.modifiedAt!.millisecondsSinceEpoch,
-      },
-      where: 'id = ?',
-      whereArgs: [doc.id],
-    );
-    await _syncEngine.appendMutation(MutationRecord(
-      id: _uuid.v4(),
-      type: MutationType.cancelDocument,
-      docType: doc.docType,
-      documentId: doc.id,
-      payload: {'id': doc.id, 'doctype': doc.docType},
-      deviceId: ctx.deviceId,
-      userId: ctx.operatorId,
-      localTimestamp: DateTime.now(),
-      status: MutationStatus.pending,
-    ));
-    await _auditLifecycle('cancelled', doc.docType, doc.id, ctx);
+    doc.modifiedAt = modified;
     await _emitter.publish(DocumentCancelledEvent(
         document: doc, docType: doc.docType, userId: ctx.operatorId));
     return doc;
@@ -861,4 +901,22 @@ abstract class DocumentInterceptor {
     Document doc,
     DocType docType,
   ) async {}
+
+  /// Invoked INSIDE the submit or cancel transaction, after the status flip and
+  /// before commit. Write only through [uow] (never through [engine], whose
+  /// calls would wait on this same transaction). Rows written here commit
+  /// atomically with the status change — the seam for an outbox marker such
+  /// as "this voucher still owes its ledger postings". Throwing rolls back the
+  /// whole submit/cancel.
+  Future<void> inLifecycleTransaction(
+    DocumentEngine engine,
+    Document doc,
+    DocType docType,
+    UnitOfWork uow,
+    LifecycleAction action,
+  ) async {}
 }
+
+/// The lifecycle transition an [DocumentInterceptor.inLifecycleTransaction]
+/// call belongs to.
+enum LifecycleAction { submit, cancel }

@@ -27,10 +27,41 @@ class AttachmentStore {
   String write(String documentId, String attachmentId, List<int> data) {
     final dir = p.join(rootPath, documentId);
     _ensureDir(dir);
+    // Write beside the target and rename into place: a crash, a full disk or
+    // an I/O error mid-write leaves at most a `.partial` file (swept by
+    // [sweepPartials]), never a truncated attachment under its real name.
     final target = File(p.join(dir, attachmentId));
-    target.writeAsBytesSync(data, flush: true);
+    final partial = File(p.join(dir, '$attachmentId$partialSuffix'));
+    try {
+      partial.writeAsBytesSync(data, flush: true);
+      partial.renameSync(target.path);
+    } catch (_) {
+      if (partial.existsSync()) partial.deleteSync();
+      rethrow;
+    }
     return '$documentId/$attachmentId';
   }
+
+  /// Suffix of an in-flight write. Never a valid attachment.
+  static const partialSuffix = '.partial';
+
+  /// Delete `.partial` files left by an interrupted [write]. Returns how many
+  /// were removed. Safe at any time no write is in flight (e.g. at startup).
+  int sweepPartials() {
+    final root = Directory(rootPath);
+    if (!root.existsSync()) return 0;
+    var removed = 0;
+    for (final e in root.listSync(recursive: true)) {
+      if (e is File && e.path.endsWith(partialSuffix)) {
+        e.deleteSync();
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /// Absolute path of the file at [storagePath] (it may not exist).
+  String absolutePath(String storagePath) => _absolute(storagePath);
 
   /// Read the bytes at [storagePath]. Throws [AttachmentException.notFound]
   /// when the file is missing.
