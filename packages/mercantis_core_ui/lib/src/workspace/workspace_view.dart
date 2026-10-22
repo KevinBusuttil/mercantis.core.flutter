@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -172,6 +174,14 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// Fewer, wider columns when the reader has enlarged text, so card titles
+/// and figures keep whole words instead of collapsing into ellipses.
+int columnsForTextScale(BuildContext context, int columns) {
+  final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+  if (scale < 1.3) return columns;
+  return math.max(1, (columns / scale).round());
+}
+
 class _CardGrid extends StatelessWidget {
   const _CardGrid({required this.cards, required this.builder});
   final List<DashboardCardSpec> cards;
@@ -180,12 +190,12 @@ class _CardGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bp = Breakpoint.of(context);
-    final cols = switch (bp) {
+    final cols = columnsForTextScale(context, switch (bp) {
       Breakpoint.phone => 2,
       Breakpoint.compact => 3,
       Breakpoint.medium => 4,
       Breakpoint.expanded => 4,
-    };
+    });
     const spacing = MercantisSpacing.md;
     return LayoutBuilder(
       builder: (context, c) {
@@ -217,7 +227,8 @@ class _QuickActionsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bp = Breakpoint.of(context);
-    final cols = bp.isPhone ? 2 : (bp == Breakpoint.compact ? 3 : 4);
+    final cols = columnsForTextScale(
+        context, bp.isPhone ? 2 : (bp == Breakpoint.compact ? 3 : 4));
     return LayoutBuilder(builder: (context, c) {
       const spacing = MercantisSpacing.md;
       final colWidth = (c.maxWidth - spacing * (cols - 1)) / cols;

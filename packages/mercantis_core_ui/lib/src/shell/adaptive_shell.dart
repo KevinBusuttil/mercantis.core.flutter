@@ -308,14 +308,24 @@ class _RailShell extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          _Brand(extended: extended, label: brandLabel, mark: brandMark),
           AtlasNavigationRail(
             extended: extended,
             selectedIndex: selectedIndex,
             // Tint the selection indicator with the active workspace's accent.
             accentColor: visible[selectedIndex].accentColor,
             onSelected: (i) => context.go(visible[i].path),
-            leading: _SearchButton(extended: extended),
+            // The brand heads the rail itself; as a sibling of the rail it
+            // became a separate, vertically centred column.
+            leading: Column(
+              crossAxisAlignment: extended
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
+              children: [
+                _Brand(extended: extended, label: brandLabel, mark: brandMark),
+                const SizedBox(height: MercantisSpacing.md),
+                _SearchButton(extended: extended),
+              ],
+            ),
             // Pin the notifications bell to the bottom of the rail.
             trailing: notificationsLocation == null
                 ? null

@@ -72,11 +72,19 @@ class KpiCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: MercantisSpacing.md),
-              Text(
-                value,
-                style: theme.textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5,
+              // One line, scaled down to fit: a figure must never break
+              // mid-number on a narrow card or at large text sizes.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                  ),
                 ),
               ),
               if (trend != null || subtitle != null) ...[
