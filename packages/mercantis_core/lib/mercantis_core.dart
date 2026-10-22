@@ -105,3 +105,9 @@ export 'src/printing/pdf_print_renderer.dart';
 export 'src/printing/html_print_renderer.dart';
 export 'src/printing/print_service.dart';
 export 'src/printing/print_format_store.dart';
+
+// Backup / restore
+export 'src/backup/backup_crypto.dart';
+export 'src/backup/backup_archive.dart';
+export 'src/backup/backup_service.dart';
+export 'src/backup/database_snapshot.dart';
