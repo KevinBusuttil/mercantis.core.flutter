@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
 
+import 'support/dart_executable.dart';
 import 'support/ledger_fixture.dart';
 
 /// Writes into the submit/cancel transaction, like a posting outbox.
@@ -175,7 +176,7 @@ void main() {
       () async {
     final dbPath = p.join(dir.path, 'killed.db');
     final rng = Random(42);
-    final dart = Platform.resolvedExecutable;
+    final dart = dartExecutable();
     for (var run = 0; run < 6; run++) {
       final child = await Process.start(dart, [
         'run',

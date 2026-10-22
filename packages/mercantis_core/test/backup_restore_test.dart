@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:test/test.dart';
 
+import 'support/dart_executable.dart';
 import 'support/ledger_fixture.dart';
 
 /// Encrypted backup and staged, journaled restore (M1.4 / M1.5).
@@ -386,7 +387,7 @@ void main() {
         final live = await fingerprint(db);
         await db.close();
 
-        final result = await Process.run(Platform.resolvedExecutable, [
+        final result = await Process.run(dartExecutable(), [
           'run',
           'test/fault/restore_crash_child.dart',
           'restore',
@@ -430,7 +431,7 @@ void main() {
         final before = await fingerprint(db);
         await db.close();
 
-        final result = await Process.run(Platform.resolvedExecutable, [
+        final result = await Process.run(dartExecutable(), [
           'run',
           'test/fault/restore_crash_child.dart',
           'backup',
