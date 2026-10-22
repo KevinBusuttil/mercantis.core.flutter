@@ -239,7 +239,10 @@ class AtlasBackupService {
       await faultHook?.call('snapshot');
 
       // Read the attachment list from the SNAPSHOT, so files and rows agree.
-      final snapshot = await request.factory.openDatabase(snapshotPath);
+      // Read-only: neither the reads nor a host summarizer can change what
+      // is archived.
+      final snapshot = await request.factory.openDatabase(snapshotPath,
+          options: OpenDatabaseOptions(readOnly: true));
       final List<Map<String, Object?>> attachmentRows;
       final int schemaVersion;
       final Map<String, Object?> businessSummary;

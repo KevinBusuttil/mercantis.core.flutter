@@ -353,6 +353,29 @@ void main() {
     expect(staged.businessSummary, {'documents': 5});
   });
 
+  test('a summarizer cannot write to the snapshot being archived', () async {
+    await expectLater(
+      service.createBackup(
+        BackupRequest(
+          database: db.db,
+          factory: databaseFactoryFfi,
+          producer: 'Neuradix Atlas',
+          appVersion: '1.0.0-test',
+          attachmentsRoot: p.join(dataDir, 'attachments'),
+          summarizeSnapshot: (snapshot) async {
+            await snapshot.delete('documents');
+            return const {};
+          },
+        ),
+        outputPath: p.join(root.path, 'books.atlasbackup'),
+        passphrase: passphrase,
+        kdf: fastKdf,
+      ),
+      throwsA(anything),
+    );
+    expect(File(p.join(root.path, 'books.atlasbackup')).existsSync(), isFalse);
+  });
+
   test('a missing attachment is reported, not silently dropped', () async {
     final rows = await db.db.query('attachments', where: 'document_id = ?',
         whereArgs: ['INV-1']);
