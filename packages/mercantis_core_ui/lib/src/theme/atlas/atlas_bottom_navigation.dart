@@ -37,6 +37,7 @@ class AtlasBottomNavigation extends StatelessWidget {
             icon: Icon(d.icon),
             selectedIcon: Icon(d.selectedIcon),
             label: d.label,
+            tooltip: d.tooltip,
           ),
       ],
     );

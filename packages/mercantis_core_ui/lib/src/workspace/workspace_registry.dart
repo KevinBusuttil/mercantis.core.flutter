@@ -16,6 +16,15 @@ class WorkspaceRegistry {
   void registerAll(Iterable<WorkspaceDescriptor> descriptors) =>
       _workspaces.addAll(descriptors);
 
+  /// Swaps the registered workspaces for [descriptors] (custom routes are
+  /// kept). Lets a host re-shape navigation live — e.g. when the user turns an
+  /// optional module on — instead of only at the next launch.
+  void replaceWorkspaces(Iterable<WorkspaceDescriptor> descriptors) {
+    _workspaces
+      ..clear()
+      ..addAll(descriptors);
+  }
+
   void registerRoute(String name, WorkspaceRouteBuilder builder) =>
       _customRoutes[name] = builder;
 
@@ -37,6 +46,20 @@ class WorkspaceRegistry {
 final workspaceRegistryProvider = Provider<WorkspaceRegistry>(
   (_) => WorkspaceRegistry(),
 );
+
+/// Decides whether a workspace location may render. Given the workspace id,
+/// the custom route name (null for the workspace dashboard) and a builder for
+/// the real screen, returns either that screen or a replacement (e.g. "this
+/// optional feature is turned off"). Purely presentational: it never replaces
+/// a permission or posting check. The default renders everything.
+typedef WorkspaceRouteGate = Widget Function(
+  BuildContext context, {
+  required String workspaceId,
+  required String? routeName,
+  required WidgetBuilder child,
+});
+
+final workspaceRouteGateProvider = Provider<WorkspaceRouteGate?>((_) => null);
 
 final permissionContextProvider = Provider<PermissionContext>(
   (_) => PermissionContext.open,

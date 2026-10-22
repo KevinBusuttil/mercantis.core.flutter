@@ -23,6 +23,9 @@ export 'src/shell/adaptive_shell.dart';
 export 'src/shell/responsive_scaffold.dart';
 export 'src/shell/app_navigation_registry.dart';
 export 'src/shell/recents_store.dart';
+export 'src/shell/shell_destination.dart';
+export 'src/shell/list_location.dart';
+export 'src/views/doc_type_presentation.dart';
 
 // Workspaces
 export 'src/workspace/workspace_descriptor.dart';

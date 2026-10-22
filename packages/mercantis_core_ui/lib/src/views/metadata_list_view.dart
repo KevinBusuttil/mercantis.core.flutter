@@ -9,9 +9,11 @@ import '../panes/responsive_split.dart';
 import '../providers/core_providers.dart';
 import '../providers/document_revision_provider.dart';
 import '../shell/breakpoints.dart';
+import '../shell/list_location.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/import_export_menu.dart';
 import '../widgets/search/global_search.dart';
+import 'doc_type_presentation.dart';
 import 'document_action.dart';
 import 'generic_form_view.dart';
 import 'record_tree_view.dart';
@@ -263,12 +265,22 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       // Desktop split: swap the query-only selection in place (replace, not
       // go) so the pushed workspace/list stays under it and the system back
       // still returns to the previous screen instead of exiting.
-      context.replace('/list/${type.id}?selected=${Uri.encodeQueryComponent(id)}');
+      // Keep the list's relabel/pre-filter in the location so the selection
+      // swap doesn't widen a filtered list back to every record.
+      final base = listLocation(type.id,
+          title: widget.title, filter: widget.filter);
+      final sep = base.contains('?') ? '&' : '?';
+      context.replace('$base${sep}selected=${Uri.encodeQueryComponent(id)}');
     }
   }
 
   Widget _buildList(DocType type, List<Document> docs) {
     final registry = ref.read(documentActionRegistryProvider);
+    final p = ref.watch(docTypePresentationProvider)(type.id);
+    final lifecycle = p.lifecycle;
+    final title = widget.title ?? p.label ?? type.name;
+    final noun = p.singular ?? type.name;
+    final filtering = _query.trim().isNotEmpty || _statusFilter != 'all';
     final rows = [
       for (final d in docs)
         DocumentListPaneRow(
@@ -276,9 +288,8 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
           title: MetadataDisplay.titleFor(type, d),
           subtitle: MetadataDisplay.subtitleFor(type, d) ?? d.id,
           amount: MetadataDisplay.amountFor(type, d),
-          statusLabel: type.isSubmittable
-              ? MetadataDisplay.docStatusLabel(d.docStatus)
-              : null,
+          statusLabel:
+              type.isSubmittable ? lifecycle.statusLabel(d.docStatus) : null,
           statusTone: type.isSubmittable
               ? MetadataDisplay.docStatusTone(d.docStatus)
               : null,
@@ -288,18 +299,24 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
     ];
 
     return DocumentListPane(
-      title: widget.title ?? type.name,
+      title: title,
       subtitle: widget.subtitle ??
           '${docs.length} ${docs.length == 1 ? 'record' : 'records'}',
-      searchHint: 'Search ${type.name.toLowerCase()}',
+      searchHint: 'Search ${title.toLowerCase()}',
+      emptyTitle: filtering
+          ? 'No matches'
+          : (p.emptyTitle ?? 'No ${title.toLowerCase()} yet'),
+      emptyMessage: filtering
+          ? 'Try a different search or status filter.'
+          : (p.emptyMessage ?? 'Use New $noun to create the first one.'),
       onSearchChanged: (v) => setState(() => _query = v),
       filterChips: type.isSubmittable
           ? [
-              for (final entry in const {
+              for (final entry in {
                 'all': 'All',
-                'draft': 'Draft',
-                'submitted': 'Submitted',
-                'cancelled': 'Cancelled',
+                'draft': lifecycle.draft,
+                'submitted': lifecycle.submitted,
+                'cancelled': lifecycle.cancelled,
               }.entries)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
@@ -320,7 +337,7 @@ class _MetadataListViewState extends ConsumerState<MetadataListView> {
       // selectedId (local filter state persists — same route page key).
       onRowTap: (r) => _openRecord(type, r.id),
       onNew: () => _newRecord(type),
-      newLabel: 'New ${type.name}',
+      newLabel: 'New $noun',
       trailingActions: [
         // Phones have no navigation-rail search button, and this pane's own
         // field only filters the current list — so surface global search here

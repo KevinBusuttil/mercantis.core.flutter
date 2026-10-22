@@ -19,6 +19,7 @@ import '../widgets/fields/scalar_field_widgets.dart';
 import '../widgets/fields/signature_field.dart';
 import '../widgets/link_picker_field.dart';
 import '../widgets/workflow_action_button.dart';
+import 'doc_type_presentation.dart';
 import 'document_action.dart';
 import 'form_field_support.dart';
 import 'record_workspace_chrome.dart';
@@ -349,6 +350,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
       _bumpRevision();
+      _confirm(_presentation.lifecycle.savedMessage);
     } catch (e) {
       setState(() {
         if (e is DocumentEngineError) {
@@ -384,6 +386,25 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     }
   }
 
+  DocTypePresentation get _presentation =>
+      ref.read(docTypePresentationProvider)(widget.docTypeName);
+
+  /// The noun for confirmations: the host's singular ("invoice") or the
+  /// engine DocType name.
+  String get _noun => _presentation.singular ?? widget.docTypeName;
+
+  /// Brief "it worked" feedback after a lifecycle step, so the operator is
+  /// never unsure whether the record was kept.
+  void _confirm(String? message) {
+    if (message == null || !mounted) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ));
+  }
+
   Future<void> _submit(DocumentEngine engine, Document current) async {
     setState(() {
       _isSaving = true;
@@ -404,6 +425,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       });
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
       _bumpRevision();
+      _confirm(_presentation.lifecycle.submittedMessage);
     } catch (e) {
       setState(() {
         if (e is DocumentEngineError) {
@@ -423,11 +445,12 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   /// Amended into a fresh draft afterwards. Refreshes in place — same id.
   Future<void> _cancel(DocumentEngine engine, Document current) async {
     final ok = await _confirmLifecycle(
-      title: 'Cancel this ${widget.docTypeName}?',
+      title: '${_presentation.lifecycle.cancel} this $_noun?',
       message:
-          'Cancelling reverses ${current.id} and any ledger effects it posted. '
-          'You can Amend a cancelled document into a new draft afterwards.',
-      confirmLabel: 'Cancel document',
+          'This reverses ${current.id} and any ledger effects it posted. '
+          'You can ${_presentation.lifecycle.amend.toLowerCase()} it into a '
+          'new draft afterwards.',
+      confirmLabel: '${_presentation.lifecycle.cancel} $_noun',
     );
     if (!ok || !mounted) return;
     setState(() {
@@ -443,6 +466,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       }
       ref.invalidate(_fetchDocProvider((widget.docTypeName, current.id)));
       _bumpRevision();
+      _confirm(_presentation.lifecycle.cancelledMessage);
     } catch (e) {
       setState(() =>
           _error = e is DocumentEngineError ? e.humanMessage : e.toString());
@@ -477,7 +501,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
   /// confirmation, then returns to the DocType's list.
   Future<void> _delete(DocumentEngine engine, Document current) async {
     final ok = await _confirmLifecycle(
-      title: 'Delete this ${widget.docTypeName}?',
+      title: 'Delete this $_noun?',
       message: 'This permanently removes ${current.id}. This cannot be undone.',
       confirmLabel: 'Delete',
     );
@@ -618,6 +642,9 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
             onDelete: doc.id.isEmpty ? null : () => _delete(engine, doc),
             error: _error,
             extraActions: extraActions,
+            lifecycleLabels: ref
+                .watch(docTypePresentationProvider)(widget.docTypeName)
+                .lifecycle,
             child: metaAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),

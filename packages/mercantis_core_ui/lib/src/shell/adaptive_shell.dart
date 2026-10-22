@@ -13,6 +13,8 @@ import '../widgets/search/global_search.dart';
 import '../workspace/workspace_descriptor.dart';
 import '../workspace/workspace_registry.dart';
 import 'breakpoints.dart';
+import 'list_location.dart';
+import 'shell_destination.dart';
 
 class AdaptiveShell extends ConsumerWidget {
   const AdaptiveShell({
@@ -62,6 +64,8 @@ class AdaptiveShell extends ConsumerWidget {
           Breakpoint.phone => _PhoneShell(
               visible: visible,
               selectedIndex: selected,
+              location: location,
+              destinations: ref.watch(phoneDestinationsProvider),
               child: child,
             ),
           Breakpoint.compact => _RailShell(
@@ -117,24 +121,34 @@ class _PhoneShell extends StatelessWidget {
   const _PhoneShell({
     required this.visible,
     required this.selectedIndex,
+    required this.location,
+    required this.destinations,
     required this.child,
   });
 
   final List<WorkspaceDescriptor> visible;
   final int selectedIndex;
+  final String location;
+
+  /// Host-shaped primary destinations ([phoneDestinationsProvider]); null
+  /// falls back to the first visible workspaces.
+  final List<ShellDestination>? destinations;
   final Widget child;
 
-  static const _maxPrimary = 4;
+  static const _maxPrimary = kMaxPhonePrimaryDestinations;
 
   @override
   Widget build(BuildContext context) {
+    final hosted = destinations;
+    if (hosted != null && hosted.isNotEmpty) return _hosted(context, hosted);
+
     final primary = visible.length <= _maxPrimary + 1
         ? visible
         : visible.take(_maxPrimary).toList();
     final overflow = visible.length <= _maxPrimary + 1
         ? const <WorkspaceDescriptor>[]
         : visible.skip(_maxPrimary).toList();
-    final destinations = <AtlasNavDestination>[
+    final destinationsBar = <AtlasNavDestination>[
       for (final w in primary)
         AtlasNavDestination(
           icon: w.icon,
@@ -150,7 +164,8 @@ class _PhoneShell extends StatelessWidget {
     ];
 
     final selectedIsInPrimary = selectedIndex < primary.length;
-    final navIndex = selectedIsInPrimary ? selectedIndex : destinations.length - 1;
+    final navIndex =
+        selectedIsInPrimary ? selectedIndex : destinationsBar.length - 1;
 
     return Scaffold(
       body: SafeArea(top: false, child: child),
@@ -159,39 +174,111 @@ class _PhoneShell extends StatelessWidget {
         // Tint the selection pill with the active workspace's accent so the
         // module keeps its colour when the rail collapses to the bottom bar.
         accentColor: visible[selectedIndex].accentColor,
-        destinations: destinations,
+        destinations: destinationsBar,
         onSelected: (i) {
           if (i < primary.length) {
             context.go(primary[i].path);
           } else {
-            _showMore(context, overflow);
+            showPhoneMoreSheet(context, overflow, current: location);
           }
         },
       ),
     );
   }
 
-  void _showMore(BuildContext context, List<WorkspaceDescriptor> overflow) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        children: [
-          for (final w in overflow)
-            ListTile(
-              leading: Icon(w.icon),
-              title: Text(w.label),
-              subtitle: w.subtitle != null ? Text(w.subtitle!) : null,
-              onTap: () {
-                Navigator.of(context).pop();
-                context.go(w.path);
-              },
+  /// The host-shaped bar: up to four task destinations plus a "More" slot that
+  /// lists every visible workspace, so nothing the product exposes becomes
+  /// unreachable on a phone.
+  Widget _hosted(BuildContext context, List<ShellDestination> hosted) {
+    final primary = hosted.take(_maxPrimary).toList();
+    var navIndex = primary.indexWhere((d) => d.matches(location));
+    if (navIndex == -1) navIndex = primary.length; // anything else is "More"
+    final primaryPaths = {for (final d in primary) d.location};
+    final more = [
+      for (final w in visible)
+        if (!primaryPaths.contains(w.path)) w,
+    ];
+    return Scaffold(
+      body: SafeArea(top: false, child: child),
+      bottomNavigationBar: AtlasBottomNavigation(
+        selectedIndex: navIndex,
+        accentColor: visible[selectedIndex].accentColor,
+        destinations: [
+          for (final d in primary)
+            AtlasNavDestination(
+              icon: d.icon,
+              selectedIcon: d.selectedIcon,
+              label: d.label,
+              tooltip: d.semanticsHint,
             ),
+          const AtlasNavDestination(
+            icon: Icons.menu,
+            selectedIcon: Icons.menu_open,
+            label: 'More',
+            tooltip: 'All areas, settings and optional features',
+          ),
         ],
+        onSelected: (i) {
+          if (i < primary.length) {
+            context.go(primary[i].location);
+          } else {
+            showPhoneMoreSheet(context, more, current: location);
+          }
+        },
       ),
     );
   }
+}
+
+/// The phone "More" sheet: every workspace not on the bottom bar, scrollable
+/// so a long list (or large text) never overflows a small phone. The current
+/// area is marked selected for orientation and for screen readers.
+Future<void> showPhoneMoreSheet(
+  BuildContext context,
+  List<WorkspaceDescriptor> workspaces, {
+  String? current,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.95,
+      builder: (_, controller) => SafeArea(
+        top: false,
+        child: ListView(
+          controller: controller,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(MercantisSpacing.lg, 0,
+                  MercantisSpacing.lg, MercantisSpacing.sm),
+              child: Semantics(
+                header: true,
+                child: Text('More',
+                    style: Theme.of(sheetContext).textTheme.titleLarge),
+              ),
+            ),
+            for (final w in workspaces)
+              ListTile(
+                minTileHeight: 56,
+                selected: current != null &&
+                    (current == w.path || current.startsWith('${w.path}/')),
+                leading: Icon(w.icon),
+                title: Text(w.label),
+                subtitle: w.subtitle != null ? Text(w.subtitle!) : null,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  context.go(w.path);
+                },
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // ─── Rail (compact / medium) ─────────────────────────────────────────────────
@@ -439,7 +526,7 @@ class SidebarExpandedNotifier extends Notifier<Set<String>> {
 /// Canonical item → route mapping, mirroring [WorkspaceView]'s item taps so the
 /// sidebar and the workspace dashboard navigate identically.
 String _sidebarItemPath(String workspaceId, WorkspaceItem item) {
-  if (item is DocTypeWorkspaceItem) return '/list/${item.docType}';
+  if (item is DocTypeWorkspaceItem) return docTypeItemLocation(item);
   if (item is CustomWorkspaceItem) return '/w/$workspaceId/${item.routeName}';
   return '/w/$workspaceId'; // dashboard / report → workspace home
 }
@@ -752,7 +839,8 @@ class _SidebarWorkspaceTile extends StatelessWidget {
         _SidebarItemRow(
           workspaceId: workspace.id,
           item: item,
-          active: location == _sidebarItemPath(workspace.id, item),
+          active: location ==
+              Uri.parse(_sidebarItemPath(workspace.id, item)).path,
         ),
     ];
   }

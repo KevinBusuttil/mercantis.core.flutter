@@ -9,9 +9,13 @@ class AtlasNavDestination {
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.tooltip,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+
+  /// Long-press tooltip / extra screen-reader context; null uses [label].
+  final String? tooltip;
 }

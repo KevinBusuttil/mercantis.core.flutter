@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../shell/breakpoints.dart';
+import '../shell/list_location.dart';
 import '../shell/responsive_scaffold.dart';
 import '../theme/atlas/atlas.dart';
 import '../theme/tokens/radius.dart';
@@ -313,7 +314,7 @@ class _SectionGrid extends StatelessWidget {
     // Drilling into a list/custom screen pushes (so back returns to the
     // workspace); a dashboard is the workspace home itself, so it replaces.
     if (item is DocTypeWorkspaceItem) {
-      context.push('/list/${item.docType}');
+      context.push(docTypeItemLocation(item));
     } else if (item is CustomWorkspaceItem) {
       context.push('/w/$workspaceId/${item.routeName}');
     } else if (item is DashboardWorkspaceItem) {
