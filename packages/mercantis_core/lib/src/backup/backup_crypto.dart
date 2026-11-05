@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as hash;
 import 'package:cryptography/cryptography.dart';
 
 /// Why a backup could not be opened. [message] is written for the person
@@ -227,8 +228,212 @@ abstract final class BackupCipher {
     }
   }
 
+  /// Open a wrapped 32-byte key (ciphertext || tag) under [kek].
+  static Future<List<int>> openKey(
+      SecretKey kek, List<int> nonce, List<int> wrapped, String aad,
+      {required String wrongMessage}) async {
+    if (wrapped.length != 32 + tagLength) {
+      throw const BackupException(
+          BackupException.damaged, 'The backup header is damaged.');
+    }
+    try {
+      return await _aead.decrypt(
+        SecretBox(wrapped.sublist(0, 32),
+            nonce: nonce, mac: Mac(wrapped.sublist(32))),
+        secretKey: kek,
+        aad: utf8.encode(aad),
+      );
+    } on SecretBoxAuthenticationError {
+      throw BackupException(
+          BackupException.wrongPassphraseOrDamaged, wrongMessage);
+    }
+  }
+
   static List<int> randomBytes(int length) {
     final rng = Random.secure();
     return List<int>.generate(length, (_) => rng.nextInt(256));
+  }
+}
+
+/// The passphrase-protected copy of a device backup key, carried in the
+/// public header of every automatic backup.
+///
+/// Automatic backups cannot ask for the passphrase each time, so they are
+/// encrypted under a random 256-bit **device key** kept in the platform's
+/// secure storage. That key is useless on a replacement device, so every
+/// automatic backup also carries this slot: the device key encrypted
+/// (AES-256-GCM) under a key derived from the operator's recovery passphrase
+/// with Argon2id. With the passphrase alone, any Atlas install can open the
+/// backup. The passphrase itself is never stored; the slot is made once, when
+/// automatic backup is switched on, and can be re-made to change it.
+class BackupRecoverySlot {
+  const BackupRecoverySlot({
+    required this.keyId,
+    required this.kdf,
+    required this.nonce,
+    required this.wrapped,
+  });
+
+  /// Public, non-secret identifier of the device key: lets a device tell
+  /// whether it holds the key for a backup without trying to decrypt it.
+  final String keyId;
+  final BackupKdfParams kdf;
+  final List<int> nonce;
+
+  /// Device key ciphertext || 16-byte tag.
+  final List<int> wrapped;
+
+  static const _aad = 'atlas-backup-recovery-slot:v1:';
+
+  static String keyIdOf(List<int> deviceKey) {
+    final d = hash.sha256
+        .convert([...utf8.encode('atlas-backup-key-id:v1:'), ...deviceKey]);
+    return base64Url.encode(d.bytes.sublist(0, 12));
+  }
+
+  static Future<BackupRecoverySlot> wrap(String passphrase, List<int> deviceKey,
+      {BackupKdfParams? kdf}) async {
+    BackupCipher.checkPassphrase(passphrase);
+    if (deviceKey.length != 32) {
+      throw ArgumentError('device key must be 32 bytes');
+    }
+    final params = kdf ?? BackupKdfParams.generate();
+    final kek = await BackupCipher.deriveKey(passphrase, params);
+    final keyId = keyIdOf(deviceKey);
+    final nonce = BackupCipher.randomBytes(12);
+    final box = await AesGcm.with256bits().encrypt(deviceKey,
+        secretKey: kek, nonce: nonce, aad: utf8.encode('$_aad$keyId'));
+    return BackupRecoverySlot(
+      keyId: keyId,
+      kdf: params,
+      nonce: nonce,
+      wrapped: [...box.cipherText, ...box.mac.bytes],
+    );
+  }
+
+  /// The device key, or [BackupException.wrongPassphraseOrDamaged].
+  Future<List<int>> unwrap(String passphrase) async {
+    final kek = await BackupCipher.deriveKey(passphrase, kdf);
+    final key = await BackupCipher.openKey(kek, nonce, wrapped, '$_aad$keyId',
+        wrongMessage: 'The recovery passphrase is wrong, or the backup file '
+            'is damaged.');
+    if (keyIdOf(key) != keyId) {
+      throw const BackupException(
+          BackupException.damaged, 'The backup header is damaged.');
+    }
+    return key;
+  }
+
+  Map<String, Object?> toJson() => {
+        'key_id': keyId,
+        'kdf': kdf.toJson(),
+        'nonce': base64Encode(nonce),
+        'wrapped': base64Encode(wrapped),
+      };
+
+  factory BackupRecoverySlot.fromJson(Map<String, Object?> j) {
+    final kdf = j['kdf'];
+    final keyId = j['key_id'];
+    final nonce = j['nonce'];
+    final wrapped = j['wrapped'];
+    if (kdf is! Map ||
+        keyId is! String ||
+        nonce is! String ||
+        wrapped is! String) {
+      throw const BackupException(
+          BackupException.damaged, 'The backup header is damaged.');
+    }
+    try {
+      final n = base64Decode(nonce);
+      final w = base64Decode(wrapped);
+      if (n.length != 12 || w.length != 32 + BackupCipher.tagLength) {
+        throw const FormatException();
+      }
+      return BackupRecoverySlot(
+        keyId: keyId,
+        kdf: BackupKdfParams.fromJson(Map<String, Object?>.from(kdf)),
+        nonce: n,
+        wrapped: w,
+      );
+    } on FormatException {
+      throw const BackupException(
+          BackupException.damaged, 'The backup header is damaged.');
+    }
+  }
+}
+
+/// What an automatic backup is encrypted with: the device key (from secure
+/// storage) and its [recovery] slot.
+class BackupKeyring {
+  BackupKeyring({required this.deviceKey, required this.recovery}) {
+    if (deviceKey.length != 32 ||
+        BackupRecoverySlot.keyIdOf(deviceKey) != recovery.keyId) {
+      throw ArgumentError('the recovery slot does not belong to this key');
+    }
+  }
+
+  final List<int> deviceKey;
+  final BackupRecoverySlot recovery;
+
+  String get keyId => recovery.keyId;
+
+  /// A new random device key protected by [passphrase].
+  static Future<BackupKeyring> create(String passphrase,
+      {BackupKdfParams? kdf}) async {
+    final key = BackupCipher.randomBytes(32);
+    return BackupKeyring(
+        deviceKey: key,
+        recovery: await BackupRecoverySlot.wrap(passphrase, key, kdf: kdf));
+  }
+}
+
+/// The per-backup content key, encrypted under the device key, as stored in
+/// a keyring backup's header. Every backup gets a fresh random content key,
+/// so segment nonces never repeat under one key however many backups the
+/// device key protects.
+class BackupContentKeySlot {
+  const BackupContentKeySlot({required this.nonce, required this.wrapped});
+
+  final List<int> nonce;
+  final List<int> wrapped;
+
+  static const _aad = 'atlas-backup-content-key:v1:';
+
+  static Future<(BackupContentKeySlot, SecretKey)> create(
+      List<int> deviceKey, String keyId) async {
+    final content = BackupCipher.randomBytes(32);
+    final nonce = BackupCipher.randomBytes(12);
+    final box = await AesGcm.with256bits().encrypt(content,
+        secretKey: SecretKey(deviceKey),
+        nonce: nonce,
+        aad: utf8.encode('$_aad$keyId'));
+    return (
+      BackupContentKeySlot(
+          nonce: nonce, wrapped: [...box.cipherText, ...box.mac.bytes]),
+      SecretKey(content),
+    );
+  }
+
+  Future<SecretKey> open(List<int> deviceKey, String keyId) async =>
+      SecretKey(await BackupCipher.openKey(
+          SecretKey(deviceKey), nonce, wrapped, '$_aad$keyId',
+          wrongMessage:
+              'This device\'s backup key does not open this backup.'));
+
+  Map<String, Object?> toJson() =>
+      {'nonce': base64Encode(nonce), 'wrapped': base64Encode(wrapped)};
+
+  factory BackupContentKeySlot.fromJson(Map<String, Object?> j) {
+    try {
+      final n = base64Decode('${j['nonce']}');
+      final w = base64Decode('${j['wrapped']}');
+      if (n.length != 12 || w.length != 32 + BackupCipher.tagLength) {
+        throw const FormatException();
+      }
+      return BackupContentKeySlot(nonce: n, wrapped: w);
+    } on FormatException {
+      throw const BackupException(
+          BackupException.damaged, 'The backup header is damaged.');
+    }
   }
 }

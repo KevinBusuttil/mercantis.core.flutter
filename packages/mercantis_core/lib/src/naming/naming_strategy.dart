@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../metadata/doc_type.dart';
 import '../document_engine/document.dart';
 import 'counter_block_allocator.dart';
+import 'naming_series_policy.dart';
 
 class NamingContext {
   final Database database;
@@ -55,13 +56,27 @@ class NamingSeriesStrategy implements NamingStrategy {
     final series = expandSeries(withFields);
     if (series == null) return expandDates(withFields, DateTime.now());
 
+    // A host-set policy can hold this DocType's numbering (after a restore
+    // whose later numbers cannot be verified) or move it to a distinct
+    // recovery series. Enforced here so no code path can mint around it.
+    final policy =
+        await NamingSeriesPolicyStore.read(context.database, docType.name);
+    if (policy != null && policy.hold) {
+      throw NamingHoldException(
+          docType.name,
+          policy.holdReason ??
+              'Numbering for ${docType.name} is on hold until the recovery '
+                  'decision is made.');
+    }
+    final prefix = policy?.apply(series.prefix) ?? series.prefix;
+
     final n = await allocator.next(
       context.database,
-      series.prefix,
+      prefix,
       context.deviceId,
-      seedFloor: (txn) => _maxExistingSuffix(txn, series.prefix),
+      seedFloor: (txn) => _maxExistingSuffix(txn, prefix),
     );
-    return '${series.prefix}${n.toString().padLeft(series.width, '0')}';
+    return '$prefix${n.toString().padLeft(series.width, '0')}';
   }
 
   /// Substitute `.{field_key}.` tokens with the document's value for that

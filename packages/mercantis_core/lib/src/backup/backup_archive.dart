@@ -17,20 +17,41 @@ class BackupHeader {
     required this.formatVersion,
     required this.createdAt,
     required this.producer,
-    required this.kdf,
     required this.noncePrefix,
+    this.kdf,
+    this.recovery,
+    this.contentKey,
     this.segmentSize = BackupCipher.segmentSize,
-  });
+  }) : assert((kdf == null) != (recovery == null && contentKey == null));
 
-  static const currentFormat = 1;
+  /// Newest format this build reads.
+  static const currentFormat = 2;
+
+  /// Format 1: the archive key is derived from the passphrase (manual
+  /// backups). Format 2: a fresh content key per backup, wrapped under the
+  /// device key, which is in turn wrapped under the recovery passphrase
+  /// ([BackupKeyring], automatic backups).
+  static const passphraseFormat = 1;
+  static const keyringFormat = 2;
   static const cipher = 'AES-256-GCM-STREAM';
 
   final int formatVersion;
   final DateTime createdAt;
   final String producer;
-  final BackupKdfParams kdf;
+
+  /// Format 1 only.
+  final BackupKdfParams? kdf;
+
+  /// Format 2 only.
+  final BackupRecoverySlot? recovery;
+  final BackupContentKeySlot? contentKey;
   final List<int> noncePrefix;
   final int segmentSize;
+
+  bool get isKeyring => recovery != null;
+
+  /// The device key this backup opens with (format 2), else null.
+  String? get keyId => recovery?.keyId;
 
   Map<String, Object?> toJson() => {
         'format': formatVersion,
@@ -39,12 +60,14 @@ class BackupHeader {
         'cipher': cipher,
         'segment_size': segmentSize,
         'nonce_prefix': base64Encode(noncePrefix),
-        'kdf': kdf.toJson(),
+        if (kdf != null) 'kdf': kdf!.toJson(),
+        if (recovery != null) 'recovery': recovery!.toJson(),
+        if (contentKey != null) 'content_key': contentKey!.toJson(),
       };
 
   factory BackupHeader.fromJson(Map<String, Object?> j) {
     final format = j['format'];
-    if (format is! int) {
+    if (format is! int || format < 1) {
       throw const BackupException(
           BackupException.damaged, 'The backup header is damaged.');
     }
@@ -61,12 +84,17 @@ class BackupHeader {
     final segment = j['segment_size'];
     final prefix = j['nonce_prefix'];
     final kdf = j['kdf'];
+    final recovery = j['recovery'];
+    final contentKey = j['content_key'];
     final created = DateTime.tryParse('${j['created_at']}');
+    final keysOk = format == passphraseFormat
+        ? kdf is Map
+        : recovery is Map && contentKey is Map;
     if (segment is! int ||
         segment < 1024 ||
         segment > (16 << 20) ||
         prefix is! String ||
-        kdf is! Map ||
+        !keysOk ||
         created == null) {
       throw const BackupException(
           BackupException.damaged, 'The backup header is damaged.');
@@ -80,10 +108,47 @@ class BackupHeader {
       formatVersion: format,
       createdAt: created,
       producer: '${j['producer'] ?? ''}',
-      kdf: BackupKdfParams.fromJson(Map<String, Object?>.from(kdf)),
+      kdf: format == passphraseFormat
+          ? BackupKdfParams.fromJson(Map<String, Object?>.from(kdf as Map))
+          : null,
+      recovery: format == keyringFormat
+          ? BackupRecoverySlot.fromJson(
+              Map<String, Object?>.from(recovery as Map))
+          : null,
+      contentKey: format == keyringFormat
+          ? BackupContentKeySlot.fromJson(
+              Map<String, Object?>.from(contentKey as Map))
+          : null,
       noncePrefix: prefixBytes,
       segmentSize: segment,
     );
+  }
+
+  /// The archive key, from the device key when it matches this backup,
+  /// otherwise from the passphrase (format 1, or format 2's recovery slot).
+  Future<SecretKey> archiveKey(
+      {String? passphrase, List<int>? deviceKey}) async {
+    final k = kdf;
+    if (k != null) {
+      if (passphrase == null) {
+        throw const BackupException(BackupException.wrongPassphraseOrDamaged,
+            'Enter the passphrase this backup was made with.');
+      }
+      return BackupCipher.deriveKey(passphrase, k);
+    }
+    final slot = recovery!;
+    List<int>? key;
+    if (deviceKey != null &&
+        BackupRecoverySlot.keyIdOf(deviceKey) == slot.keyId) {
+      key = deviceKey;
+    } else if (passphrase != null) {
+      key = await slot.unwrap(passphrase);
+    }
+    if (key == null) {
+      throw const BackupException(BackupException.wrongPassphraseOrDamaged,
+          'Enter the recovery passphrase for this automatic backup.');
+    }
+    return contentKey!.open(key, slot.keyId);
   }
 }
 

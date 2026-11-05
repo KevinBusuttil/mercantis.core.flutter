@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as hash;
+import 'package:cryptography/cryptography.dart' show SecretKey;
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common/sqflite.dart';
 
@@ -154,6 +155,7 @@ enum RestoreStep {
   previousMoved,
   stagedInstalled,
   verified,
+  hostPrepared,
   committed,
 }
 
@@ -220,10 +222,14 @@ class AtlasBackupService {
   Future<BackupReport> createBackup(
     BackupRequest request, {
     required String outputPath,
-    required String passphrase,
+    String? passphrase,
+    BackupKeyring? keyring,
     BackupKdfParams? kdf,
   }) async {
-    BackupCipher.checkPassphrase(passphrase);
+    if ((passphrase == null) == (keyring == null)) {
+      throw ArgumentError('give exactly one of passphrase or keyring');
+    }
+    if (passphrase != null) BackupCipher.checkPassphrase(passphrase);
     final work = Directory(p.join(
         workDirectory, 'backup-${DateTime.now().microsecondsSinceEpoch}'));
     work.createSync(recursive: true);
@@ -315,7 +321,9 @@ class AtlasBackupService {
 
       final createdAt = DateTime.now().toUtc();
       final manifest = <String, Object?>{
-        'format': BackupHeader.currentFormat,
+        'format': keyring == null
+            ? BackupHeader.passphraseFormat
+            : BackupHeader.keyringFormat,
         'producer': request.producer,
         'app_version': request.appVersion,
         'created_at': createdAt.toIso8601String(),
@@ -331,14 +339,32 @@ class AtlasBackupService {
         'business_summary': businessSummary,
       };
 
-      final header = BackupHeader(
-        formatVersion: BackupHeader.currentFormat,
-        createdAt: createdAt,
-        producer: request.producer,
-        kdf: kdf ?? BackupKdfParams.generate(),
-        noncePrefix: BackupCipher.randomBytes(BackupCipher.noncePrefixLength),
-      );
-      final key = await BackupCipher.deriveKey(passphrase, header.kdf);
+      final BackupHeader header;
+      final SecretKey key;
+      final noncePrefix =
+          BackupCipher.randomBytes(BackupCipher.noncePrefixLength);
+      if (keyring != null) {
+        final (slot, contentKey) =
+            await BackupContentKeySlot.create(keyring.deviceKey, keyring.keyId);
+        header = BackupHeader(
+          formatVersion: BackupHeader.keyringFormat,
+          createdAt: createdAt,
+          producer: request.producer,
+          recovery: keyring.recovery,
+          contentKey: slot,
+          noncePrefix: noncePrefix,
+        );
+        key = contentKey;
+      } else {
+        header = BackupHeader(
+          formatVersion: BackupHeader.passphraseFormat,
+          createdAt: createdAt,
+          producer: request.producer,
+          kdf: kdf ?? BackupKdfParams.generate(),
+          noncePrefix: noncePrefix,
+        );
+        key = await BackupCipher.deriveKey(passphrase!, header.kdf!);
+      }
       final partialFile = File(partial);
       partialFile.parent.createSync(recursive: true);
       writer = await BackupArchiveWriter.create(partial, header, key);
@@ -361,7 +387,7 @@ class AtlasBackupService {
 
       // Prove the file reads back (authenticates and every hash matches)
       // before it replaces anything under its real name.
-      await verifyBackup(partial, passphrase);
+      await verifyBackup(partial, passphrase, deviceKey: keyring?.deviceKey);
       await faultHook?.call('verified');
 
       final out = File(outputPath);
@@ -386,11 +412,15 @@ class AtlasBackupService {
   /// Decrypt [path] end to end without writing anything, checking every
   /// segment's authentication tag and every file's hash against the manifest.
   /// Returns the manifest.
-  Future<Map<String, Object?>> verifyBackup(
-      String path, String passphrase) async {
+  ///
+  /// [passphrase] opens a manual backup, or an automatic one through its
+  /// recovery slot; [deviceKey] opens an automatic backup made on this device.
+  Future<Map<String, Object?>> verifyBackup(String path, String? passphrase,
+      {List<int>? deviceKey}) async {
     final reader = await BackupArchiveReader.open(path);
     try {
-      final key = await BackupCipher.deriveKey(passphrase, reader.header.kdf);
+      final key = await reader.header
+          .archiveKey(passphrase: passphrase, deviceKey: deviceKey);
       Map<String, Object?>? manifest;
       final entries = await reader.extract(
         key: key,
@@ -419,7 +449,8 @@ class AtlasBackupService {
   /// archive or an incompatible schema; the staging folder is removed then.
   Future<StagedRestore> stageRestore({
     required String backupPath,
-    required String passphrase,
+    String? passphrase,
+    List<int>? deviceKey,
     required String stagingDirectory,
     required DatabaseFactory factory,
     int supportedSchemaVersion = MigrationRunner.latestVersion,
@@ -433,7 +464,8 @@ class AtlasBackupService {
       Map<String, Object?>? manifest;
       final List<ExtractedEntry> entries;
       try {
-        final key = await BackupCipher.deriveKey(passphrase, reader.header.kdf);
+        final key = await reader.header
+            .archiveKey(passphrase: passphrase, deviceKey: deviceKey);
         entries = await reader.extract(
           key: key,
           onManifest: (m) {
@@ -527,6 +559,8 @@ class AtlasBackupService {
     RestoreTarget target, {
     required DatabaseFactory factory,
     Future<List<String>> Function(String databasePath)? verifyInstalled,
+    Future<void> Function(String databasePath, String? previousDatabasePath)?
+        prepareInstalled,
     String? safetyCopyDirectory,
     Future<void> Function(RestoreStep step)? onStep,
   }) async {
@@ -577,7 +611,18 @@ class AtlasBackupService {
       if (problems.isNotEmpty) throw RestoreVerificationException(problems);
       await onStep?.call(RestoreStep.verified);
 
-      // 4. Commit: from here the restored data stands.
+      // 4. Host preparation of the verified books, still under the journal:
+      //    if it fails or the process dies here, the previous data comes
+      //    back. The replaced database (if any) is passed so the host can
+      //    carry evidence across, e.g. the numbers it had already issued.
+      if (prepareInstalled != null) {
+        final previousDb = File(p.join(previous, 'mercantis.db'));
+        await prepareInstalled(target.databasePath,
+            previousDb.existsSync() ? previousDb.path : null);
+      }
+      await onStep?.call(RestoreStep.hostPrepared);
+
+      // 5. Commit: from here the restored data stands.
       _writeJournal(journal, {'state': 'committed'});
       await onStep?.call(RestoreStep.committed);
     } catch (_) {
