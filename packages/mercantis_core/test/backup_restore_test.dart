@@ -298,7 +298,7 @@ void main() {
         kdf: fastKdf,
         noncePrefix: BackupCipher.randomBytes(7),
       );
-      final key = await BackupCipher.deriveKey(passphrase, header.kdf);
+      final key = await BackupCipher.deriveKey(passphrase, header.kdf!);
       final evil = p.join(root.path, 'evil.atlasbackup');
       final w = await BackupArchiveWriter.create(evil, header, key);
       await w.addManifest({
@@ -512,5 +512,170 @@ void main() {
         await service.verifyBackup(out, passphrase);
       }, timeout: const Timeout(Duration(minutes: 2)));
     }
+  });
+
+  group('automatic-backup keyring (format 2)', () {
+    Future<BackupKeyring> keyring() =>
+        BackupKeyring.create(passphrase, kdf: fastKdf);
+
+    Future<BackupReport> keyed(String out, BackupKeyring k) =>
+        service.createBackup(
+          BackupRequest(
+            database: db.db,
+            factory: databaseFactoryFfi,
+            producer: 'Neuradix Atlas',
+            appVersion: '1.0.0-test',
+            attachmentsRoot: p.join(dataDir, 'attachments'),
+            businessSummary: {'documents': 5},
+          ),
+          outputPath: out,
+          keyring: k,
+        );
+
+    test('a fresh device restores it with the recovery passphrase alone',
+        () async {
+      final k = await keyring();
+      final out = p.join(root.path, 'auto.atlasbackup');
+      await keyed(out, k);
+      final header = await AtlasBackupService.readHeader(out);
+      expect(header.formatVersion, BackupHeader.keyringFormat);
+      expect(header.keyId, k.keyId);
+      final original = await fingerprint(db);
+
+      // The original device and its secure storage are gone.
+      final cleanDir = p.join(root.path, 'replacement');
+      final staged = await service.stageRestore(
+        backupPath: out,
+        passphrase: passphrase,
+        stagingDirectory: p.join(cleanDir, 'restore-staging'),
+        factory: databaseFactoryFfi,
+      );
+      await service.commitRestore(staged, targetFor(cleanDir),
+          factory: databaseFactoryFfi);
+      final restored = await MercantisDatabase.open(
+          factory: databaseFactoryFfi, path: targetFor(cleanDir).databasePath);
+      try {
+        expect(await fingerprint(restored), original);
+      } finally {
+        await restored.close();
+      }
+    });
+
+    test('the device key opens it without the passphrase', () async {
+      final k = await keyring();
+      final out = p.join(root.path, 'auto.atlasbackup');
+      await keyed(out, k);
+      final m = await service.verifyBackup(out, null, deviceKey: k.deviceKey);
+      expect(m['format'], BackupHeader.keyringFormat);
+    });
+
+    test('a wrong passphrase or another device key does not open it', () async {
+      final k = await keyring();
+      final out = p.join(root.path, 'auto.atlasbackup');
+      await keyed(out, k);
+      final other = await keyring();
+      await expectLater(
+          service.verifyBackup(out, 'not the right passphrase'),
+          throwsA(isA<BackupException>().having((e) => e.code, 'code',
+              BackupException.wrongPassphraseOrDamaged)));
+      await expectLater(
+          service.verifyBackup(out, null, deviceKey: other.deviceKey),
+          throwsA(isA<BackupException>()));
+    });
+
+    test('every backup has its own content key; nothing secret in clear',
+        () async {
+      final k = await keyring();
+      final a = p.join(root.path, 'a.atlasbackup');
+      final b = p.join(root.path, 'b.atlasbackup');
+      await keyed(a, k);
+      await keyed(b, k);
+      final ha = await AtlasBackupService.readHeader(a);
+      final hb = await AtlasBackupService.readHeader(b);
+      expect(ha.contentKey!.wrapped, isNot(hb.contentKey!.wrapped));
+      final hay = latin1.decode(File(a).readAsBytesSync());
+      expect(hay.contains(passphrase), isFalse);
+      expect(hay.contains(base64Encode(k.deviceKey)), isFalse);
+      expect(hay.contains('INV-1'), isFalse, reason: 'business data encrypted');
+    });
+
+    test('editing the recovery slot in the header is detected', () async {
+      final k = await keyring();
+      final out = p.join(root.path, 'auto.atlasbackup');
+      await keyed(out, k);
+      final bytes = File(out).readAsBytesSync();
+      final text = latin1.decode(bytes);
+      final i = text.indexOf('"key_id":"') + 10;
+      bytes[i] = bytes[i] == 0x41 ? 0x42 : 0x41;
+      File(out).writeAsBytesSync(bytes);
+      await expectLater(service.verifyBackup(out, passphrase),
+          throwsA(isA<BackupException>()));
+      await expectLater(service.verifyBackup(out, null, deviceKey: k.deviceKey),
+          throwsA(isA<BackupException>()));
+    });
+
+    test('a recovery slot can be re-made under a new passphrase', () async {
+      final k = await keyring();
+      final slot = await BackupRecoverySlot.wrap(
+          'a different long passphrase', k.deviceKey,
+          kdf: fastKdf);
+      expect(slot.keyId, k.keyId);
+      expect(await slot.unwrap('a different long passphrase'), k.deviceKey);
+      expect(() => BackupKeyring(deviceKey: k.deviceKey, recovery: slot),
+          returnsNormally);
+      expect(
+          () => BackupRecoverySlot.wrap('short', k.deviceKey),
+          throwsA(isA<BackupException>()
+              .having((e) => e.code, 'code', BackupException.weakPassphrase)));
+    });
+
+    test('exactly one of passphrase or keyring is required', () async {
+      final k = await keyring();
+      await expectLater(
+          service.createBackup(
+              BackupRequest(
+                  database: db.db,
+                  factory: databaseFactoryFfi,
+                  producer: 'x',
+                  appVersion: 'x'),
+              outputPath: p.join(root.path, 'x.atlasbackup'),
+              passphrase: passphrase,
+              keyring: k),
+          throwsArgumentError);
+    });
+  });
+
+  test(
+      'prepareInstalled sees the restored and the replaced books, and a '
+      'failure there rolls the restore back', () async {
+    final out = p.join(root.path, 'b.atlasbackup');
+    await backup(out);
+    await engine.save(invoice('AFTER-BACKUP'), testRoles);
+    final staged = await service.stageRestore(
+      backupPath: out,
+      passphrase: passphrase,
+      stagingDirectory: p.join(dataDir, 'restore-staging'),
+      factory: databaseFactoryFfi,
+    );
+    await db.close();
+    String? seenPrevious;
+    await expectLater(
+        service.commitRestore(staged, targetFor(dataDir),
+            factory: databaseFactoryFfi,
+            prepareInstalled: (installed, previous) async {
+          seenPrevious = previous;
+          final prev = await databaseFactoryFfi.openDatabase(previous!,
+              options: OpenDatabaseOptions(singleInstance: false));
+          final rows = await prev
+              .query('documents', where: 'id = ?', whereArgs: ['AFTER-BACKUP']);
+          await prev.close();
+          expect(rows, hasLength(1));
+          throw StateError('host refused');
+        }),
+        throwsStateError);
+    expect(seenPrevious, isNotNull);
+    await openLive();
+    expect(await engine.fetch('Inv', 'AFTER-BACKUP'), isNotNull,
+        reason: 'the live books came back untouched');
   });
 }

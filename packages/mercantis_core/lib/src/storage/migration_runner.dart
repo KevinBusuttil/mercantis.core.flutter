@@ -21,7 +21,7 @@ class UnsupportedSchemaVersionException implements Exception {
 
 class MigrationRunner {
   /// The newest schema version this build knows how to create and open.
-  static const latestVersion = 8;
+  static const latestVersion = 9;
 
   static final Map<int, Future<void> Function(DatabaseExecutor db)> _steps = {
     1: _v1,
@@ -32,6 +32,7 @@ class MigrationRunner {
     6: _v6,
     7: _v7,
     8: _v8,
+    9: _v9,
   };
 
   /// Brings [db] up to [latestVersion]. Each step's DDL and its version bump
@@ -377,5 +378,26 @@ class MigrationRunner {
       )
     ''');
     await db.update('schema_version', {'version': 8});
+  }
+
+  /// v9: naming-series policy (recovery after restoring an older backup).
+  ///
+  /// One optional row per DocType. `hold = 1` refuses to mint a new
+  /// counter-based name for that DocType until the operator makes a recovery
+  /// decision ([NamingHoldException]); `segment` (e.g. `R1`) is inserted
+  /// after the resolved series prefix, so the DocType continues in a distinct
+  /// recovery series (`SINV-2026-` becomes `SINV-2026-R1-`). Hosts decide
+  /// which DocTypes are covered and when; Core only enforces the row.
+  static Future<void> _v9(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS naming_series_policy (
+        doc_type TEXT PRIMARY KEY NOT NULL,
+        hold INTEGER NOT NULL DEFAULT 0,
+        hold_reason TEXT,
+        segment TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.update('schema_version', {'version': 9});
   }
 }

@@ -137,4 +137,34 @@ class CounterBlockAllocator {
           where: 'series = ?', whereArgs: [series]);
     });
   }
+
+  /// The highest number each series has actually handed out on any device:
+  /// for a series with reserved blocks, the furthest any block has been
+  /// consumed; for one with none (fresh, or reset by [setNextNumber]), its
+  /// high-water mark. Read-only. Used to carry numbering evidence across a
+  /// restore, so an older backup cannot hand the same numbers out again.
+  Future<Map<String, int>> issuedThrough(DatabaseExecutor db) async {
+    final out = <String, int>{};
+    for (final r in await db.query('naming_block_allocations')) {
+      out['${r['series']}'] = r['allocated_through'] as int;
+    }
+    final consumed = <String, int>{};
+    for (final r
+        in await db.rawQuery('SELECT series, MAX(next_value) - 1 AS through '
+            'FROM naming_counter_blocks GROUP BY series')) {
+      consumed['${r['series']}'] = (r['through'] as int?) ?? 0;
+    }
+    consumed.forEach((series, through) => out[series] = through);
+    return out;
+  }
+
+  /// Raise [series] so its next number is at least [nextNumber]. Never
+  /// lowers it. Returns true when the series moved.
+  Future<bool> raiseNextNumber(
+      Database db, String series, int nextNumber) async {
+    final issued = (await issuedThrough(db))[series] ?? 0;
+    if (nextNumber <= issued + 1) return false;
+    await setNextNumber(db, series, nextNumber);
+    return true;
+  }
 }

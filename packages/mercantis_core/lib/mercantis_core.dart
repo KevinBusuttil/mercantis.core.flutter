@@ -57,6 +57,7 @@ export 'src/sync_engine/sync_engine.dart';
 export 'src/naming/naming_strategy.dart';
 export 'src/naming/naming_service.dart';
 export 'src/naming/counter_block_allocator.dart';
+export 'src/naming/naming_series_policy.dart';
 
 // Automation
 export 'src/automation/automation_action_handler.dart';
