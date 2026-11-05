@@ -43,4 +43,21 @@ void main() {
     expect(storageErrorText(StateError('x')), isNull);
     expect(operatorErrorText(StateError('x')), contains('x'));
   });
+
+  test('no storage message promises that nothing was saved', () {
+    // Review fix: a caller can fail part-way through a multi-step action,
+    // so the operator is told to check, never that nothing was stored.
+    final errors = <Object>[
+      const FileSystemException(
+          'write failed', '/x', OSError('No space left on device', 28)),
+      const FileSystemException(
+          'open failed', '/x', OSError('Read-only file system', 30)),
+      const FileSystemException('write failed', '/x', OSError('Other', 5)),
+    ];
+    for (final error in errors) {
+      final text = storageErrorText(error)!;
+      expect(text.toLowerCase(), isNot(contains('nothing was saved')));
+      expect(text.toLowerCase(), contains('check'));
+    }
+  });
 }
