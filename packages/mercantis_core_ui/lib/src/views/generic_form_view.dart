@@ -357,7 +357,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
           _error = e.humanMessage;
           _distributeValidationErrors(e.validationErrors);
         } else {
-          _error = e.toString();
+          _error = operatorErrorText(e);
         }
       });
     } finally {
@@ -379,7 +379,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     } catch (e) {
       if (mounted) {
         setState(() =>
-            _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+            _error = operatorErrorText(e));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -432,7 +432,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
           _error = e.humanMessage;
           _distributeValidationErrors(e.validationErrors);
         } else {
-          _error = e.toString();
+          _error = operatorErrorText(e);
         }
       });
     } finally {
@@ -469,7 +469,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
       _confirm(_presentation.lifecycle.cancelledMessage);
     } catch (e) {
       setState(() =>
-          _error = e is DocumentEngineError ? e.humanMessage : e.toString());
+          _error = operatorErrorText(e));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -490,7 +490,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e is DocumentEngineError ? e.humanMessage : e.toString();
+          _error = operatorErrorText(e);
           _isSaving = false;
         });
       }
@@ -522,7 +522,7 @@ class _GenericFormViewState extends ConsumerState<GenericFormView> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e is DocumentEngineError ? e.humanMessage : e.toString();
+          _error = operatorErrorText(e);
           _isSaving = false;
         });
       }
